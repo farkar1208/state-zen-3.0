@@ -1,0 +1,2058 @@
+
+    > 把@define.md 实现出来。实现上分成蓝图定义和状态机实现两层，通过编译/实例化等其它手段把状   
+                                                                                                 
+                                                                                                 
+      态机蓝图转化成可运行的状态机。目前你只需要实现状态机蓝图，不需要实现状态机。activeIn和upd  
+                                                                                                 
+            ate分别需要一套算子。    宿主语言是rust。                                            
+
+✦ 我来先阅读 define.md 文件，了解状态机蓝图的具体定义。
+  ✔  Read File define.md
+     从 define.md 读取所有 113 行数据
+
+✦ 现在我了解了状态机蓝图的定义。让我创建一个任务计划来实现这个状态机蓝图系统。
+  ✔  Plan 更新待办事项列表（7个待处理，0个进行中，0个已完成）
+     ·已更新待办事项列表
+       ⎿ ☐ 设计 Rust 项目结构（Cargo.toml，模块划分）
+         ☐ 实现 StateAspect 核心类型和状态向量表示
+         ☐ 实现 activeIn 算子（谓词组合算子）
+         ☐ 实现 Zone 类型定义
+         ☐ 实现 Transition 类型定义
+         ☐ 实现 update 算子（状态变换算子）
+         ☐ 实现状态机蓝图（StateMachineBlueprint）结构
+
+  ✔  Plan 更新待办事项列表（6个待处理，1个进行中，0个已完成）
+     ·已更新待办事项列表
+       ⎿ ☐ 设计 Rust 项目结构（Cargo.toml，模块划分）
+         ☐ 实现 StateAspect 核心类型和状态向量表示
+         ☐ 实现 activeIn 算子（谓词组合算子）
+         ☐ 实现 Zone 类型定义
+         ☐ 实现 Transition 类型定义
+         ☐ 实现 update 算子（状态变换算子）
+         ☐ 实现状态机蓝图（StateMachineBlueprint）结构
+
+  ✔  Write File 正在写入 Cargo.toml
+     [package]
+     name = "state-zen"
+     version = "0.1.0"
+     edition = "2021"
+
+     [dependencies]
+
+     [dev-dependencies]
+
+  ✔  Write File 正在写入 src\lib.rs
+     pub mod aspect;
+     pub mod active_in;
+     pub mod zone;
+     pub mod transition;
+     pub mod update;
+     pub mod blueprint;
+
+     pub use aspect::{StateAspect, AspectId, StateValue};
+     pub use active_in::{ActiveIn, Predicate};
+     pub use zone::Zone;
+     pub use transition::Transition;
+     pub use update::{Update, UpdateOp};
+     pub use blueprint::StateMachineBlueprint;
+
+  ✔  Plan 更新待办事项列表（5个待处理，1个进行中，1个已完成）
+     ·已更新待办事项列表
+       ⎿ ✔ 设计 Rust 项目结构（Cargo.toml，模块划分）
+         ☐ 实现 StateAspect 核心类型和状态向量表示
+         ☐ 实现 activeIn 算子（谓词组合算子）
+         ☐ 实现 Zone 类型定义
+         ☐ 实现 Transition 类型定义
+         ☐ 实现 update 算子（状态变换算子）
+         ☐ 实现状态机蓝图（StateMachineBlueprint）结构
+
+  ✔  Write File 正在写入 src\aspect.rs
+     use std::collections::HashMap;
+     use std::fmt;
+
+     /// Unique identifier for a StateAspect
+     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+     pub struct AspectId(pub usize);
+
+     /// Represents the value of a StateAspect
+     #[derive(Debug, Clone, PartialEq)]
+     pub enum StateValue {
+         Bool(bool),
+         Integer(i64),
+         Float(f64),
+         String(String),
+     }
+
+     impl fmt::Display for StateValue {
+         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+             match self {
+                 StateValue::Bool(b) => write!(f, "{}", b),
+                 StateValue::Integer(i) => write!(f, "{}", i),
+                 StateValue::Float(v) => write!(f, "{}", v),
+                 StateValue::String(s) => write!(f, "\"{}\"", s),
+             }
+         }
+     }
+
+     /// Defines a single StateAspect - an orthogonal dimension of the state vector
+     #[derive(Debug, Clone)]
+     pub struct StateAspect {
+         pub id: AspectId,
+         pub name: String,
+         pub default_value: StateValue,
+     }
+
+     impl StateAspect {
+         pub fn new(id: AspectId, name: impl Into<String>, default_value: StateValue) ->
+     Self {
+             Self {
+                 id,
+                 name: name.into(),
+                 default_value,
+             }
+         }
+     }
+
+     /// Represents the complete system state as a high-dimensional vector
+     #[derive(Debug, Clone, PartialEq)]
+     pub struct State {
+         /// Map from aspect ID to its current value
+         values: HashMap<AspectId, StateValue>,
+     }
+
+     impl State {
+         /// Create a new empty state
+         pub fn new() -> Self {
+             Self {
+                 values: HashMap::new(),
+             }
+         }
+
+         /// Create a state from a map of aspect IDs to values
+         pub fn from_map(values: HashMap<AspectId, StateValue>) -> Self {
+             Self { values }
+         }
+
+         /// Get the value of a specific aspect
+         pub fn get(&self, aspect_id: AspectId) -> Option<&StateValue> {
+             self.values.get(&aspect_id)
+         }
+
+         /// Set the value of a specific aspect, returning a new state
+         pub fn set(&self, aspect_id: AspectId, value: StateValue) -> Self {
+             let mut new_values = self.values.clone();
+             new_values.insert(aspect_id, value);
+             Self { values: new_values }
+         }
+
+         /// Check if the state contains a specific aspect
+         pub fn has(&self, aspect_id: AspectId) -> bool {
+             self.values.contains_key(&aspect_id)
+         }
+
+         /// Get all aspect IDs in this state
+         pub fn aspect_ids(&self) -> impl Iterator<Item = AspectId> + '_ {
+             self.values.keys().copied()
+         }
+
+         /// Get the number of aspects in this state
+         pub fn len(&self) -> usize {
+             self.values.len()
+         }
+
+         /// Check if the state is empty
+         pub fn is_empty(&self) -> bool {
+             self.values.is_empty()
+         }
+     }
+
+     impl Default for State {
+         fn default() -> Self {
+             Self::new()
+         }
+     }
+
+     /// Builder for constructing State instances
+     pub struct StateBuilder {
+         values: HashMap<AspectId, StateValue>,
+     }
+
+     impl StateBuilder {
+         pub fn new() -> Self {
+             Self {
+                 values: HashMap::new(),
+             }
+         }
+
+         pub fn set(mut self, aspect_id: AspectId, value: StateValue) -> Self {
+             self.values.insert(aspect_id, value);
+             self
+         }
+
+         pub fn build(self) -> State {
+             State::from_map(self.values)
+         }
+     }
+
+     impl Default for StateBuilder {
+         fn default() -> Self {
+             Self::new()
+         }
+     }
+
+     #[cfg(test)]
+     mod tests {
+         use super::*;
+
+         #[test]
+         fn test_state_creation() {
+             let mut state = State::new();
+             let id = AspectId(0);
+             state = state.set(id, StateValue::Bool(true));
+
+             assert_eq!(state.get(id), Some(&StateValue::Bool(true)));
+         }
+
+         #[test]
+         fn test_state_builder() {
+             let id1 = AspectId(0);
+             let id2 = AspectId(1);
+
+             let state = StateBuilder::new()
+                 .set(id1, StateValue::Bool(true))
+                 .set(id2, StateValue::Integer(42))
+                 .build();
+
+             assert_eq!(state.get(id1), Some(&StateValue::Bool(true)));
+             assert_eq!(state.get(id2), Some(&StateValue::Integer(42)));
+         }
+     }
+
+  ✔  Plan 更新待办事项列表（4个待处理，1个进行中，2个已完成）
+     ·已更新待办事项列表
+       ⎿ ✔ 设计 Rust 项目结构（Cargo.toml，模块划分）
+         ✔ 实现 StateAspect 核心类型和状态向量表示
+         ☐ 实现 activeIn 算子（谓词组合算子）
+         ☐ 实现 Zone 类型定义
+         ☐ 实现 Transition 类型定义
+         ☐ 实现 update 算子（状态变换算子）
+         ☐ 实现状态机蓝图（StateMachineBlueprint）结构
+
+  ✔  Write File 正在写入 src\active_in.rs
+     ... 前 68 行已隐藏 ...（输入ctrl+r查看全部）
+                     .get(aspect_id)
+                     .and_then(|v| match v {
+                         StateValue::Integer(i) => Some(*i),
+                         _ => None,
+                     })
+                     .map_or(false, |i| i < value)
+             })
+         }
+
+         /// Check if an aspect integer is greater than a value
+         pub fn aspect_gt(aspect_id: AspectId, value: i64) -> Self {
+             Self::new(move |state| {
+                 state
+                     .get(aspect_id)
+                     .and_then(|v| match v {
+                         StateValue::Integer(i) => Some(*i),
+                         _ => None,
+                     })
+                     .map_or(false, |i| i > value)
+             })
+         }
+
+         /// Check if an aspect integer is in a range
+         pub fn aspect_in_range(aspect_id: AspectId, min: i64, max: i64) -> Self {
+             Self::new(move |state| {
+                 state
+                     .get(aspect_id)
+                     .and_then(|v| match v {
+                         StateValue::Integer(i) => Some(*i),
+                         _ => None,
+                     })
+                     .map_or(false, |i| i >= min && i <= max)
+             })
+         }
+
+         /// Check if an aspect string equals a value
+         pub fn aspect_string_eq(aspect_id: AspectId, value: impl Into<String> + Clone)
+     -> Self {
+             let value = value.into();
+             Self::new(move |state| {
+                 state
+                     .get(aspect_id)
+                     .and_then(|v| match v {
+                         StateValue::String(s) => Some(s.as_str()),
+                         _ => None,
+                     })
+                     .map_or(false, |s| s == value.as_str())
+             })
+         }
+
+         /// Logical AND of two predicates
+         pub fn and(self, other: ActiveIn) -> Self {
+             Self::new(move |state| self.evaluate(state) && other.evaluate(state))
+         }
+
+         /// Logical OR of two predicates
+         pub fn or(self, other: ActiveIn) -> Self {
+             Self::new(move |state| self.evaluate(state) || other.evaluate(state))
+         }
+
+         /// Logical NOT of a predicate
+         pub fn not(self) -> Self {
+             Self::new(move |state| !self.evaluate(state))
+         }
+
+         /// Logical AND of multiple predicates
+         pub fn all(predicates: Vec<ActiveIn>) -> Self {
+             Self::new(move |state| predicates.iter().all(|p| p.evaluate(state)))
+         }
+
+         /// Logical OR of multiple predicates
+         pub fn any(predicates: Vec<ActiveIn>) -> Self {
+             Self::new(move |state| predicates.iter().any(|p| p.evaluate(state)))
+         }
+     }
+
+     /// Builder for constructing ActiveIn predicates
+     pub struct ActiveInBuilder {
+         predicates: Vec<ActiveIn>,
+         op: BuilderOp,
+     }
+
+     #[derive(Clone, Copy)]
+     enum BuilderOp {
+         And,
+         Or,
+     }
+
+     impl ActiveInBuilder {
+         pub fn new() -> Self {
+             Self {
+                 predicates: Vec::new(),
+                 op: BuilderOp::And,
+             }
+         }
+
+         pub fn with_all() -> Self {
+             Self {
+                 predicates: Vec::new(),
+                 op: BuilderOp::And,
+             }
+         }
+
+         pub fn with_any() -> Self {
+             Self {
+                 predicates: Vec::new(),
+                 op: BuilderOp::Or,
+             }
+         }
+
+         pub fn add(mut self, predicate: ActiveIn) -> Self {
+             self.predicates.push(predicate);
+             self
+         }
+
+         pub fn aspect_bool(self, aspect_id: AspectId, value: bool) -> Self {
+             self.add(ActiveIn::aspect_bool(aspect_id, value))
+         }
+
+         pub fn aspect_eq(self, aspect_id: AspectId, value: i64) -> Self {
+             self.add(ActiveIn::aspect_eq(aspect_id, value))
+         }
+
+         pub fn aspect_lt(self, aspect_id: AspectId, value: i64) -> Self {
+             self.add(ActiveIn::aspect_lt(aspect_id, value))
+         }
+
+         pub fn aspect_gt(self, aspect_id: AspectId, value: i64) -> Self {
+             self.add(ActiveIn::aspect_gt(aspect_id, value))
+         }
+
+         pub fn aspect_in_range(self, aspect_id: AspectId, min: i64, max: i64) -> Self {
+             self.add(ActiveIn::aspect_in_range(aspect_id, min, max))
+         }
+
+         pub fn aspect_string_eq(self, aspect_id: AspectId, value: impl Into<String> +
+     Clone) -> Self {
+             self.add(ActiveIn::aspect_string_eq(aspect_id, value))
+         }
+
+         pub fn build(self) -> ActiveIn {
+             match self.op {
+                 BuilderOp::And => ActiveIn::all(self.predicates),
+                 BuilderOp::Or => ActiveIn::any(self.predicates),
+             }
+         }
+     }
+
+     impl Default for ActiveInBuilder {
+         fn default() -> Self {
+             Self::new()
+         }
+     }
+
+     #[cfg(test)]
+     mod tests {
+         use super::*;
+         use crate::aspect::StateValue;
+
+         #[test]
+         fn test_active_in_bool() {
+             let id = AspectId(0);
+             let state = StateBuilder::new()
+                 .set(id, StateValue::Bool(true))
+                 .build();
+
+             let active_in = ActiveIn::aspect_bool(id, true);
+             assert!(active_in.evaluate(&state));
+
+             let active_in = ActiveIn::aspect_bool(id, false);
+             assert!(!active_in.evaluate(&state));
+         }
+
+         #[test]
+         fn test_active_in_composition() {
+             let id1 = AspectId(0);
+             let id2 = AspectId(1);
+
+             let state = StateBuilder::new()
+                 .set(id1, StateValue::Bool(true))
+                 .set(id2, StateValue::Integer(5))
+                 .build();
+
+             let active_in = ActiveIn::aspect_bool(id1, true)
+                 .and(ActiveIn::aspect_lt(id2, 10));
+             assert!(active_in.evaluate(&state));
+
+             let active_in = ActiveIn::aspect_bool(id1, false)
+                 .or(ActiveIn::aspect_gt(id2, 0));
+             assert!(active_in.evaluate(&state));
+         }
+
+         #[test]
+         fn test_active_in_builder() {
+             let id1 = AspectId(0);
+             let id2 = AspectId(1);
+
+             let state = StateBuilder::new()
+                 .set(id1, StateValue::Bool(true))
+                 .set(id2, StateValue::Integer(5))
+                 .build();
+
+             let active_in = ActiveInBuilder::with_all()
+                 .aspect_bool(id1, true)
+                 .aspect_lt(id2, 10)
+                 .build();
+
+             assert!(active_in.evaluate(&state));
+         }
+     }
+
+  ✔  Plan 更新待办事项列表（3个待处理，1个进行中，3个已完成）
+     ·已更新待办事项列表
+       ⎿ ✔ 设计 Rust 项目结构（Cargo.toml，模块划分）
+         ✔ 实现 StateAspect 核心类型和状态向量表示
+         ✔ 实现 activeIn 算子（谓词组合算子）
+         ☐ 实现 Zone 类型定义
+         ☐ 实现 Transition 类型定义
+         ☐ 实现 update 算子（状态变换算子）
+         ☐ 实现状态机蓝图（StateMachineBlueprint）结构
+
+  ✔  Write File 正在写入 src\zone.rs
+     use crate::active_in::ActiveIn;
+     use std::fmt;
+
+     /// Represents a state behavior area with lifecycle semantics
+     ///
+     /// A Zone defines a region in the state space with associated side effects
+     /// that trigger when entering or leaving that region.
+     #[derive(Clone)]
+     pub struct Zone {
+         pub id: String,
+         /// Defines the state collection covered by this zone
+         pub active_in: ActiveIn,
+         /// Side effect triggered when entering this region
+         pub on_enter: Option<ZoneHandler>,
+         /// Side effect triggered when leaving this region
+         pub on_exit: Option<ZoneHandler>,
+     }
+
+     impl fmt::Debug for Zone {
+         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+             f.debug_struct("Zone")
+                 .field("id", &self.id)
+                 .field("has_on_enter", &self.on_enter.is_some())
+                 .field("has_on_exit", &self.on_exit.is_some())
+                 .finish()
+         }
+     }
+
+     /// Side effect handler for zone lifecycle events
+     pub type ZoneHandler = Box<dyn Fn() + Send + Sync>;
+
+     impl Zone {
+         /// Create a new Zone
+         pub fn new(id: impl Into<String>, active_in: ActiveIn) -> Self {
+             Self {
+                 id: id.into(),
+                 active_in,
+                 on_enter: None,
+                 on_exit: None,
+             }
+         }
+
+         /// Set the on_enter handler
+         pub fn with_on_enter<F>(mut self, handler: F) -> Self
+         where
+             F: Fn() + Send + Sync + 'static,
+         {
+             self.on_enter = Some(Box::new(handler));
+             self
+         }
+
+         /// Set the on_exit handler
+         pub fn with_on_exit<F>(mut self, handler: F) -> Self
+         where
+             F: Fn() + Send + Sync + 'static,
+         {
+             self.on_exit = Some(Box::new(handler));
+             self
+         }
+
+         /// Evaluate whether this zone is active in the given state
+         pub fn is_active(&self, state: &crate::aspect::State) -> bool {
+             self.active_in.evaluate(state)
+         }
+
+         /// Execute the on_enter handler if present
+         pub fn enter(&self) {
+             if let Some(handler) = &self.on_enter {
+                 handler();
+             }
+         }
+
+         /// Execute the on_exit handler if present
+         pub fn exit(&self) {
+             if let Some(handler) = &self.on_exit {
+                 handler();
+             }
+         }
+     }
+
+     /// Builder for constructing Zone instances
+     pub struct ZoneBuilder {
+         id: Option<String>,
+         active_in: Option<ActiveIn>,
+         on_enter: Option<ZoneHandler>,
+         on_exit: Option<ZoneHandler>,
+     }
+
+     impl ZoneBuilder {
+         pub fn new() -> Self {
+             Self {
+                 id: None,
+                 active_in: None,
+                 on_enter: None,
+                 on_exit: None,
+             }
+         }
+
+         pub fn id(mut self, id: impl Into<String>) -> Self {
+             self.id = Some(id.into());
+             self
+         }
+
+         pub fn active_in(mut self, active_in: ActiveIn) -> Self {
+             self.active_in = Some(active_in);
+             self
+         }
+
+         pub fn on_enter<F>(mut self, handler: F) -> Self
+         where
+             F: Fn() + Send + Sync + 'static,
+         {
+             self.on_enter = Some(Box::new(handler));
+             self
+         }
+
+         pub fn on_exit<F>(mut self, handler: F) -> Self
+         where
+             F: Fn() + Send + Sync + 'static,
+         {
+             self.on_exit = Some(Box::new(handler));
+             self
+         }
+
+         pub fn build(self) -> Result<Zone, String> {
+             let id = self.id.ok_or("Zone id is required")?;
+             let active_in = self.active_in.ok_or("active_in is required")?;
+
+             Ok(Zone {
+                 id,
+                 active_in,
+                 on_enter: self.on_enter,
+                 on_exit: self.on_exit,
+             })
+         }
+     }
+
+     impl Default for ZoneBuilder {
+         fn default() -> Self {
+             Self::new()
+         }
+     }
+
+     #[cfg(test)]
+     mod tests {
+         use super::*;
+         use crate::active_in::ActiveIn;
+         use crate::aspect::{AspectId, State, StateBuilder, StateValue};
+
+         #[test]
+         fn test_zone_creation() {
+             let id = AspectId(0);
+             let active_in = ActiveIn::aspect_bool(id, true);
+
+             let zone = Zone::new("test_zone", active_in);
+
+             assert_eq!(zone.id, "test_zone");
+             assert!(zone.on_enter.is_none());
+             assert!(zone.on_exit.is_none());
+         }
+
+         #[test]
+         fn test_zone_with_handlers() {
+             let id = AspectId(0);
+             let active_in = ActiveIn::aspect_bool(id, true);
+
+             let zone = Zone::new("test_zone", active_in)
+                 .with_on_enter(|| {})
+                 .with_on_exit(|| {});
+
+             assert!(zone.on_enter.is_some());
+             assert!(zone.on_exit.is_some());
+         }
+
+         #[test]
+         fn test_zone_activation() {
+             let id = AspectId(0);
+
+             let active_in = ActiveIn::aspect_bool(id, true);
+             let zone = Zone::new("test_zone", active_in);
+
+             let state_active = StateBuilder::new()
+                 .set(id, StateValue::Bool(true))
+                 .build();
+
+             let state_inactive = StateBuilder::new()
+                 .set(id, StateValue::Bool(false))
+                 .build();
+
+             assert!(zone.is_active(&state_active));
+             assert!(!zone.is_active(&state_inactive));
+         }
+
+         #[test]
+         fn test_zone_builder() {
+             let id = AspectId(0);
+             let active_in = ActiveIn::aspect_bool(id, true);
+
+             let zone = ZoneBuilder::new()
+                 .id("test_zone")
+                 .active_in(active_in)
+                 .on_enter(|| {})
+                 .on_exit(|| {})
+                 .build()
+                 .unwrap();
+
+             assert_eq!(zone.id, "test_zone");
+             assert!(zone.on_enter.is_some());
+             assert!(zone.on_exit.is_some());
+         }
+     }
+
+  ✔  Plan 更新待办事项列表（2个待处理，1个进行中，4个已完成）
+     ·已更新待办事项列表
+       ⎿ ✔ 设计 Rust 项目结构（Cargo.toml，模块划分）
+         ✔ 实现 StateAspect 核心类型和状态向量表示
+         ✔ 实现 activeIn 算子（谓词组合算子）
+         ✔ 实现 Zone 类型定义
+         ☐ 实现 Transition 类型定义
+         ☐ 实现 update 算子（状态变换算子）
+         ☐ 实现状态机蓝图（StateMachineBlueprint）结构
+
+  ✔  Write File 正在写入 src\transition.rs
+     ... 前 34 行已隐藏 ...（输入ctrl+r查看全部）
+     pub struct EventId(pub String);
+
+     impl EventId {
+         pub fn new(id: impl Into<String>) -> Self {
+             Self(id.into())
+         }
+     }
+
+     /// Side effect handler for transition events
+     pub type TransitionHandler = Box<dyn Fn() + Send + Sync>;
+
+     impl Transition {
+         /// Create a new Transition
+         pub fn new(id: impl Into<String>, active_in: ActiveIn, event: EventId, update:
+     Update) -> Self {
+             Self {
+                 id: id.into(),
+                 active_in,
+                 event,
+                 update,
+                 on_tran: None,
+             }
+         }
+
+         /// Set the on_tran handler
+         pub fn with_on_tran<F>(mut self, handler: F) -> Self
+         where
+             F: Fn() + Send + Sync + 'static,
+         {
+             self.on_tran = Some(Box::new(handler));
+             self
+         }
+
+         /// Check if this transition should be active (listen for events) in the given 
+     state
+         pub fn is_active(&self, state: &State) -> bool {
+             self.active_in.evaluate(state)
+         }
+
+         /// Apply the update to the state, returning a new state
+         pub fn apply(&self, state: State) -> State {
+             self.update.apply(state)
+         }
+
+         /// Execute the on_tran handler if present
+         pub fn trigger(&self) {
+             if let Some(handler) = &self.on_tran {
+                 handler();
+             }
+         }
+     }
+
+     /// Builder for constructing Transition instances
+     pub struct TransitionBuilder {
+         id: Option<String>,
+         active_in: Option<ActiveIn>,
+         event: Option<EventId>,
+         update: Option<Update>,
+         on_tran: Option<TransitionHandler>,
+     }
+
+     impl TransitionBuilder {
+         pub fn new() -> Self {
+             Self {
+                 id: None,
+                 active_in: None,
+                 event: None,
+                 update: None,
+                 on_tran: None,
+             }
+         }
+
+         pub fn id(mut self, id: impl Into<String>) -> Self {
+             self.id = Some(id.into());
+             self
+         }
+
+         pub fn active_in(mut self, active_in: ActiveIn) -> Self {
+             self.active_in = Some(active_in);
+             self
+         }
+
+         pub fn event(mut self, event: EventId) -> Self {
+             self.event = Some(event);
+             self
+         }
+
+         pub fn event_str(mut self, event: impl Into<String>) -> Self {
+             self.event = Some(EventId::new(event));
+             self
+         }
+
+         pub fn update(mut self, update: Update) -> Self {
+             self.update = Some(update);
+             self
+         }
+
+         pub fn on_tran<F>(mut self, handler: F) -> Self
+         where
+             F: Fn() + Send + Sync + 'static,
+         {
+             self.on_tran = Some(Box::new(handler));
+             self
+         }
+
+         pub fn build(self) -> Result<Transition, String> {
+             let id = self.id.ok_or("Transition id is required")?;
+             let active_in = self.active_in.ok_or("active_in is required")?;
+             let event = self.event.ok_or("event is required")?;
+             let update = self.update.ok_or("update is required")?;
+
+             Ok(Transition {
+                 id,
+                 active_in,
+                 event,
+                 update,
+                 on_tran: self.on_tran,
+             })
+         }
+     }
+
+     impl Default for TransitionBuilder {
+         fn default() -> Self {
+             Self::new()
+         }
+     }
+
+     #[cfg(test)]
+     mod tests {
+         use super::*;
+         use crate::active_in::ActiveIn;
+         use crate::aspect::{AspectId, State, StateBuilder, StateValue};
+         use crate::update::Update;
+
+         #[test]
+         fn test_transition_creation() {
+             let mode_id = AspectId(0);
+             let active_in = ActiveIn::aspect_bool(mode_id, true);
+             let event = EventId::new("start");
+             let update = Update::set(mode_id, StateValue::Bool(false));
+
+             let transition = Transition::new("test_transition", active_in, event,
+     update);
+
+             assert_eq!(transition.id, "test_transition");
+             assert_eq!(transition.event, EventId::new("start"));
+             assert!(transition.on_tran.is_none());
+         }
+
+         #[test]
+         fn test_transition_activation() {
+             let mode_id = AspectId(0);
+             let active_in = ActiveIn::aspect_bool(mode_id, true);
+             let event = EventId::new("start");
+             let update = Update::noop();
+
+             let transition = Transition::new("test_transition", active_in, event,
+     update);
+
+             let state_active = StateBuilder::new()
+                 .set(mode_id, StateValue::Bool(true))
+                 .build();
+
+             let state_inactive = StateBuilder::new()
+                 .set(mode_id, StateValue::Bool(false))
+                 .build();
+
+             assert!(transition.is_active(&state_active));
+             assert!(!transition.is_active(&state_inactive));
+         }
+
+         #[test]
+         fn test_transition_apply() {
+             let mode_id = AspectId(0);
+             let active_in = ActiveIn::always();
+             let event = EventId::new("start");
+             let update = Update::set(mode_id, StateValue::Bool(false));
+
+             let transition = Transition::new("test_transition", active_in, event,
+     update);
+
+             let state = StateBuilder::new()
+                 .set(mode_id, StateValue::Bool(true))
+                 .build();
+
+             let new_state = transition.apply(state);
+
+             assert_eq!(new_state.get(mode_id), Some(&StateValue::Bool(false)));
+         }
+
+         #[test]
+         fn test_transition_builder() {
+             let mode_id = AspectId(0);
+             let active_in = ActiveIn::always();
+             let event = EventId::new("start");
+             let update = Update::set(mode_id, StateValue::Bool(false));
+
+             let transition = TransitionBuilder::new()
+                 .id("test_transition")
+                 .active_in(active_in)
+                 .event(event)
+                 .update(update)
+                 .on_tran(|| {})
+                 .build()
+                 .unwrap();
+
+             assert_eq!(transition.id, "test_transition");
+             assert!(transition.on_tran.is_some());
+         }
+     }
+
+  ✔  Plan 更新待办事项列表（1个待处理，1个进行中，5个已完成）
+     ·已更新待办事项列表
+       ⎿ ✔ 设计 Rust 项目结构（Cargo.toml，模块划分）
+         ✔ 实现 StateAspect 核心类型和状态向量表示
+         ✔ 实现 activeIn 算子（谓词组合算子）
+         ✔ 实现 Zone 类型定义
+         ✔ 实现 Transition 类型定义
+         ☐ 实现 update 算子（状态变换算子）
+         ☐ 实现状态机蓝图（StateMachineBlueprint）结构
+
+  ✔  Write File 正在写入 src\update.rs
+     ... 前 163 行已隐藏 ...（输入ctrl+r查看全部）
+                         .fold(state, |acc, update| update.apply(acc))
+                 }
+                 UpdateOp::Conditional {
+                     predicate,
+                     then_update,
+                     else_update,
+                 } => {
+                     if predicate(&state) {
+                         then_update.apply(state)
+                     } else if let Some(else_update) = else_update {
+                         else_update.apply(state)
+                     } else {
+                         state
+                     }
+                 }
+             }
+         }
+     }
+
+     /// Builder for constructing Update instances
+     pub struct UpdateBuilder {
+         operations: Vec<Update>,
+     }
+
+     impl UpdateBuilder {
+         pub fn new() -> Self {
+             Self {
+                 operations: Vec::new(),
+             }
+         }
+
+         pub fn set(mut self, aspect_id: AspectId, value: StateValue) -> Self {
+             self.operations.push(Update::set(aspect_id, value));
+             self
+         }
+
+         pub fn set_bool(mut self, aspect_id: AspectId, value: bool) -> Self {
+             self.operations.push(Update::set_bool(aspect_id, value));
+             self
+         }
+
+         pub fn set_int(mut self, aspect_id: AspectId, value: i64) -> Self {
+             self.operations.push(Update::set_int(aspect_id, value));
+             self
+         }
+
+         pub fn set_float(mut self, aspect_id: AspectId, value: f64) -> Self {
+             self.operations.push(Update::set_float(aspect_id, value));
+             self
+         }
+
+         pub fn set_string(mut self, aspect_id: AspectId, value: impl Into<String>) ->
+     Self {
+             self.operations.push(Update::set_string(aspect_id, value));
+             self
+         }
+
+         pub fn increment(mut self, aspect_id: AspectId) -> Self {
+             self.operations.push(Update::increment(aspect_id));
+             self
+         }
+
+         pub fn decrement(mut self, aspect_id: AspectId) -> Self {
+             self.operations.push(Update::decrement(aspect_id));
+             self
+         }
+
+         pub fn add(mut self, aspect_id: AspectId, delta: i64) -> Self {
+             self.operations.push(Update::add(aspect_id, delta));
+             self
+         }
+
+         pub fn toggle(mut self, aspect_id: AspectId) -> Self {
+             self.operations.push(Update::toggle(aspect_id));
+             self
+         }
+
+         pub fn modify<F>(mut self, aspect_id: AspectId, f: F) -> Self
+         where
+             F: Fn(StateValue) -> StateValue + Send + Sync + 'static,
+         {
+             self.operations.push(Update::modify(aspect_id, f));
+             self
+         }
+
+         pub fn build(self) -> Update {
+             Update::compose(self.operations)
+         }
+     }
+
+     impl Default for UpdateBuilder {
+         fn default() -> Self {
+             Self::new()
+         }
+     }
+
+     #[cfg(test)]
+     mod tests {
+         use super::*;
+         use crate::aspect::{StateBuilder, StateValue};
+
+         #[test]
+         fn test_update_noop() {
+             let id = AspectId(0);
+             let state = StateBuilder::new()
+                 .set(id, StateValue::Bool(true))
+                 .build();
+
+             let new_state = Update::noop().apply(state.clone());
+
+             assert_eq!(new_state, state);
+         }
+
+         #[test]
+         fn test_update_set() {
+             let id = AspectId(0);
+             let state = StateBuilder::new()
+                 .set(id, StateValue::Bool(true))
+                 .build();
+
+             let new_state = Update::set_bool(id, false).apply(state);
+
+             assert_eq!(new_state.get(id), Some(&StateValue::Bool(false)));
+         }
+
+         #[test]
+         fn test_update_increment() {
+             let id = AspectId(0);
+             let state = StateBuilder::new()
+                 .set(id, StateValue::Integer(5))
+                 .build();
+
+             let new_state = Update::increment(id).apply(state);
+
+             assert_eq!(new_state.get(id), Some(&StateValue::Integer(6)));
+         }
+
+         #[test]
+         fn test_update_toggle() {
+             let id = AspectId(0);
+             let state = StateBuilder::new()
+                 .set(id, StateValue::Bool(true))
+                 .build();
+
+             let new_state = Update::toggle(id).apply(state);
+
+             assert_eq!(new_state.get(id), Some(&StateValue::Bool(false)));
+         }
+
+         #[test]
+         fn test_update_compose() {
+             let id1 = AspectId(0);
+             let id2 = AspectId(1);
+
+             let state = StateBuilder::new()
+                 .set(id1, StateValue::Bool(false))
+                 .set(id2, StateValue::Integer(5))
+                 .build();
+
+             let new_state = Update::compose(vec![
+                 Update::toggle(id1),
+                 Update::increment(id2),
+             ])
+             .apply(state);
+
+             assert_eq!(new_state.get(id1), Some(&StateValue::Bool(true)));
+             assert_eq!(new_state.get(id2), Some(&StateValue::Integer(6)));
+         }
+
+         #[test]
+         fn test_update_conditional() {
+             let id = AspectId(0);
+             let state = StateBuilder::new()
+                 .set(id, StateValue::Integer(5))
+                 .build();
+
+             let update = Update::conditional(
+                 |s| s.get(id).and_then(|v| match v {
+                     StateValue::Integer(i) => Some(*i),
+                     _ => None,
+                 }).map_or(false, |i| i < 10),
+                 Update::increment(id),
+             );
+
+             let new_state = update.apply(state);
+
+             assert_eq!(new_state.get(id), Some(&StateValue::Integer(6)));
+         }
+
+         #[test]
+         fn test_update_builder() {
+             let id1 = AspectId(0);
+             let id2 = AspectId(1);
+
+             let state = StateBuilder::new()
+                 .set(id1, StateValue::Bool(false))
+                 .set(id2, StateValue::Integer(5))
+                 .build();
+
+             let update = UpdateBuilder::new()
+                 .toggle(id1)
+                 .increment(id2)
+                 .build();
+
+             let new_state = update.apply(state);
+
+             assert_eq!(new_state.get(id1), Some(&StateValue::Bool(true)));
+             assert_eq!(new_state.get(id2), Some(&StateValue::Integer(6)));
+         }
+     }
+
+  ✔  Plan 更新待办事项列表（0个待处理，1个进行中，6个已完成）
+     ·已更新待办事项列表
+       ⎿ ✔ 设计 Rust 项目结构（Cargo.toml，模块划分）
+         ✔ 实现 StateAspect 核心类型和状态向量表示
+         ✔ 实现 activeIn 算子（谓词组合算子）
+         ✔ 实现 Zone 类型定义
+         ✔ 实现 Transition 类型定义
+         ✔ 实现 update 算子（状态变换算子）
+         ☐ 实现状态机蓝图（StateMachineBlueprint）结构
+
+  ✔  Write File 正在写入 src\blueprint.rs
+     ... 前 187 行已隐藏 ...（输入ctrl+r查看全部）
+                 }
+                 ValidationError::UndefinedAspect(id) => {
+                     write!(f, "Undefined aspect referenced: {:?}", id)
+                 }
+             }
+         }
+     }
+
+     /// Statistics about a blueprint
+     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+     pub struct BlueprintStats {
+         pub aspect_count: usize,
+         pub zone_count: usize,
+         pub transition_count: usize,
+         pub event_count: usize,
+     }
+
+     /// Builder for constructing StateMachineBlueprint instances
+     pub struct BlueprintBuilder {
+         id: Option<String>,
+         aspects: Vec<StateAspect>,
+         zones: Vec<Zone>,
+         transitions: Vec<Transition>,
+     }
+
+     impl BlueprintBuilder {
+         pub fn new() -> Self {
+             Self {
+                 id: None,
+                 aspects: Vec::new(),
+                 zones: Vec::new(),
+                 transitions: Vec::new(),
+             }
+         }
+
+         pub fn id(mut self, id: impl Into<String>) -> Self {
+             self.id = Some(id.into());
+             self
+         }
+
+         pub fn aspect(mut self, aspect: StateAspect) -> Self {
+             self.aspects.push(aspect);
+             self
+         }
+
+         pub fn zone(mut self, zone: Zone) -> Self {
+             self.zones.push(zone);
+             self
+         }
+
+         pub fn transition(mut self, transition: Transition) -> Self {
+             self.transitions.push(transition);
+             self
+         }
+
+         pub fn build(self) -> Result<StateMachineBlueprint, String> {
+             let id = self.id.ok_or("Blueprint id is required")?;
+
+             let mut blueprint = StateMachineBlueprint::new(id);
+             for aspect in self.aspects {
+                 blueprint.add_aspect(aspect);
+             }
+             for zone in self.zones {
+                 blueprint.add_zone(zone);
+             }
+             for transition in self.transitions {
+                 blueprint.add_transition(transition);
+             }
+
+             Ok(blueprint)
+         }
+     }
+
+     impl Default for BlueprintBuilder {
+         fn default() -> Self {
+             Self::new()
+         }
+     }
+
+     #[cfg(test)]
+     mod tests {
+         use super::*;
+         use crate::active_in::ActiveIn;
+         use crate::update::Update;
+
+         #[test]
+         fn test_blueprint_creation() {
+             let blueprint = StateMachineBlueprint::new("test_machine");
+
+             assert_eq!(blueprint.id, "test_machine");
+             assert_eq!(blueprint.aspects().count(), 0);
+             assert_eq!(blueprint.zones().len(), 0);
+             assert_eq!(blueprint.transitions().len(), 0);
+         }
+
+         #[test]
+         fn test_blueprint_add_aspect() {
+             let mut blueprint = StateMachineBlueprint::new("test_machine");
+
+             let aspect = StateAspect::new(
+                 AspectId(0),
+                 "mode",
+                 StateValue::String("idle".to_string()),
+             );
+
+             blueprint.add_aspect(aspect);
+
+             assert_eq!(blueprint.aspects().count(), 1);
+         }
+
+         #[test]
+         fn test_blueprint_add_zone() {
+             let mut blueprint = StateMachineBlueprint::new("test_machine");
+
+             let zone = Zone::new("test_zone", ActiveIn::always());
+
+             blueprint.add_zone(zone);
+
+             assert_eq!(blueprint.zones().len(), 1);
+         }
+
+         #[test]
+         fn test_blueprint_add_transition() {
+             let mut blueprint = StateMachineBlueprint::new("test_machine");
+
+             let transition = Transition::new(
+                 "test_transition",
+                 ActiveIn::always(),
+                 EventId::new("start"),
+                 Update::noop(),
+             );
+
+             blueprint.add_transition(transition);
+
+             assert_eq!(blueprint.transitions().len(), 1);
+             assert!(blueprint.events().contains(&EventId::new("start")));
+         }
+
+         #[test]
+         fn test_blueprint_initial_state() {
+             let mut blueprint = StateMachineBlueprint::new("test_machine");
+
+             let aspect1 = StateAspect::new(AspectId(0), "mode", StateValue::String(
+     "idle".to_string()));
+             let aspect2 = StateAspect::new(AspectId(1), "count", StateValue::Integer(0
+     ));
+
+             blueprint.add_aspect(aspect1);
+             blueprint.add_aspect(aspect2);
+
+             let state = blueprint.create_initial_state();
+
+             assert_eq!(state.get(AspectId(0)), Some(&StateValue::String("idle".
+     to_string())));
+             assert_eq!(state.get(AspectId(1)), Some(&StateValue::Integer(0)));
+         }
+
+         #[test]
+         fn test_blueprint_stats() {
+             let mut blueprint = StateMachineBlueprint::new("test_machine");
+
+             let aspect = StateAspect::new(AspectId(0), "mode", StateValue::String(
+     "idle".to_string()));
+             blueprint.add_aspect(aspect);
+
+             let zone = Zone::new("test_zone", ActiveIn::always());
+             blueprint.add_zone(zone);
+
+             let transition = Transition::new(
+                 "test_transition",
+                 ActiveIn::always(),
+                 EventId::new("start"),
+                 Update::noop(),
+             );
+             blueprint.add_transition(transition);
+
+             let stats = blueprint.stats();
+
+             assert_eq!(stats.aspect_count, 1);
+             assert_eq!(stats.zone_count, 1);
+             assert_eq!(stats.transition_count, 1);
+             assert_eq!(stats.event_count, 1);
+         }
+
+         #[test]
+         fn test_blueprint_builder() {
+             let aspect = StateAspect::new(AspectId(0), "mode", StateValue::String(
+     "idle".to_string()));
+             let zone = Zone::new("test_zone", ActiveIn::always());
+             let transition = Transition::new(
+                 "test_transition",
+                 ActiveIn::always(),
+                 EventId::new("start"),
+                 Update::noop(),
+             );
+
+             let blueprint = BlueprintBuilder::new()
+                 .id("test_machine")
+                 .aspect(aspect)
+                 .zone(zone)
+                 .transition(transition)
+                 .build()
+                 .unwrap();
+
+             assert_eq!(blueprint.id, "test_machine");
+             assert_eq!(blueprint.aspects().count(), 1);
+             assert_eq!(blueprint.zones().len(), 1);
+             assert_eq!(blueprint.transitions().len(), 1);
+         }
+     }
+
+  ✔  Plan 更新待办事项列表（0个待处理，0个进行中，7个已完成）
+     ·已更新待办事项列表
+       ⎿ ✔ 设计 Rust 项目结构（Cargo.toml，模块划分）
+         ✔ 实现 StateAspect 核心类型和状态向量表示
+         ✔ 实现 activeIn 算子（谓词组合算子）
+         ✔ 实现 Zone 类型定义
+         ✔ 实现 Transition 类型定义
+         ✔ 实现 update 算子（状态变换算子）
+         ✔ 实现状态机蓝图（StateMachineBlueprint）结构
+
+✦ 现在让我编译项目以确保代码正确：
+  x  Shell cd "C:\Users\AS\Documents\state-zen 3.0" && cargo check [current working directory C:\…
+     Error output:
+     At line:1 char:42
+     + cd "C:\Users\AS\Documents\state-zen 3.0" && cargo check
+     +                                          ~~
+     The token '&&' is not a valid statement separator in this version.
+         + CategoryInfo          : ParserError: (:) [],
+     ParentContainsErrorRecordException
+         + FullyQualifiedErrorId : InvalidEndOfLine
+     Command exited with code: 1
+
+  x  Shell cd "C:\Users\AS\Documents\state-zen 3.0"; if($?) {cargo check} [current working direct…
+     ... 前 51 行已隐藏 ...（输入ctrl+r查看全部）
+        = note: 1 redundant requirement hidden
+        = note: required for `Option<Box<dyn Fn() + Send + Sync>>` to implement `Clone`
+     help: use parentheses to call this trait object
+        |
+     16 |     pub on_exit: Option<ZoneHandler>(),
+        |                                     ++
+
+     ... (output truncated, 1900 characters omitted)
+     Command exited with code: 1
+
+✦ 我需要修复这些编译错误。让我逐个修复：
+  ✔  Edit src\lib.rs: pub use update::{Update, Updat... => pub use update::Update;
+       pub use active_in::{ActiveIn, Predicate};
+       pub use zone::Zone;
+       pub use transition::Transition;
+     - pub use update::{Update, UpdateOp};
+     + pub use update::Update;
+       pub use blueprint::StateMachineBlueprint;
+
+  ✔  Edit src\zone.rs: /// Represents a state behavio... => /// Represents a state behavio...
+       ///
+       /// A Zone defines a region in the state space with associated side effects
+       /// that trigger when entering or leaving that region.
+     - #[derive(Clone)]
+       pub struct Zone {
+           pub id: String,
+           /// Defines the state collection covered by this zone
+
+  ✔  Edit src\transition.rs: /// Represents a state transit... => /// Represents a state transit.…
+       ///
+       /// A Transition describes how the system responds to events and evolves state.
+       /// It only listens for events when its activeIn condition is true.
+     - #[derive(Clone)]
+       pub struct Transition {
+           pub id: String,
+           /// When this transition should listen for events
+
+  ✔  Edit src\blueprint.rs: use crate::aspect::{AspectId, ... => use crate::aspect::{AspectId, ...
+     - use crate::aspect::{AspectId, State, StateAspect, StateValue};
+     + use crate::aspect::{AspectId, State, StateAspect};
+       use crate::zone::Zone;
+       use crate::transition::{EventId, Transition};
+       use std::collections::{HashMap, HashSet};
+
+  x  Shell cd "C:\Users\AS\Documents\state-zen 3.0"; if($?) {cargo check} [current working direct…
+     ... 前 44 行已隐藏 ...（输入ctrl+r查看全部）
+     variables), use the `move` keyword
+        |
+     90 |         Self::modify(aspect_id, move |v| match v {
+        |                                 ++++
+
+     Some errors have detailed explanations: E0277, E0373.
+     For more information about an error, try `rustc --explain E0277`.
+     error: could not compile `state-zen` (lib) due to 3 previous errors
+     Command exited with code: 1
+
+  ✔  Edit src\blueprint.rs: /// A blueprint for defining a... => /// A blueprint for defining a...
+       /// - Transitions (event-driven state changes)
+       ///
+       /// This blueprint can be compiled/validated and then instantiated into a 
+       runnable state machine.
+     - #[derive(Debug, Clone)]
+     + #[derive(Debug)]
+       pub struct StateMachineBlueprint {
+           /// Unique identifier for this blueprint
+           pub id: String,
+
+  ✔  Edit src\update.rs: /// Add a delta to an integer ... => /// Add a delta to an integer ...
+
+       /// Add a delta to an integer aspect
+       pub fn add(aspect_id: AspectId, delta: i64) -> Self {
+     -     Self::modify(aspect_id, |v| match v {
+     +     Self::modify(aspect_id, move |v| match v {
+               StateValue::Integer(i) => StateValue::Integer(i + delta),
+               _ => v,
+           })
+
+  ✔  Shell cd "C:\Users\AS\Documents\state-zen 3.0"; if($?) {cargo check} [current working direct…
+
+         Checking state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0)
+         Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.24s
+
+
+✦ 编译成功！现在让我运行测试确保一切正常：
+  x  Shell cd "C:\Users\AS\Documents\state-zen 3.0"; if($?) {cargo test} [current working directo…
+     ... 前 55 行已隐藏 ...（输入ctrl+r查看全部）
+         |
+     269 +     use crate::StateValue;
+         |
+
+     error[E0433]: failed to resolve: use of undeclared type `StateValue`
+        --> src\blueprint.rs:331:62
+         |
+     ... (output truncated, 3729 characters omitted)
+     Command exited with code: 1
+
+✦ 我需要修复测试中的导入问题：
+  ✔  Edit src\active_in.rs: #[cfg(test)]... => #[cfg(test)]...
+       #[cfg(test)]
+       mod tests {
+           use super::*;
+     -     use crate::aspect::StateValue;
+     +     use crate::aspect::{StateBuilder, StateValue};
+
+           #[test]
+           fn test_active_in_bool() {
+
+  ✔  Edit src\blueprint.rs: #[cfg(test)]... => #[cfg(test)]...
+       mod tests {
+           use super::*;
+           use crate::active_in::ActiveIn;
+     +     use crate::aspect::StateValue;
+           use crate::update::Update;
+
+           #[test]
+
+  x  Shell cd "C:\Users\AS\Documents\state-zen 3.0"; if($?) {cargo test} [current working directo…
+     ... 前 40 行已隐藏 ...（输入ctrl+r查看全部）
+     340 |             move |s| s.get(id).and_then(|v| match v {
+         |             ++++
+
+     For more information about this error, try `rustc --explain E0373`.
+     warning: `state-zen` (lib test) generated 2 warnings
+     error: could not compile `state-zen` (lib test) due to 1 previous error; 2 warnings
+     emitted
+     warning: build failed, waiting for other jobs to finish...
+     Command exited with code: 1
+
+  ✔  Edit src\update.rs: let update = Update::condition... => let update = Update::condition...
+           .build();
+
+       let update = Update::conditional(
+     -     |s| s.get(id).and_then(|v| match v {
+     +     move |s| s.get(id).and_then(|v| match v {
+               StateValue::Integer(i) => Some(*i),
+               _ => None,
+           }).map_or(false, |i| i < 10),
+
+  ✔  Edit src\zone.rs: use crate::aspect::{AspectId, ... => use crate::aspect::{AspectId, ...
+       mod tests {
+           use super::*;
+           use crate::active_in::ActiveIn;
+     -     use crate::aspect::{AspectId, State, StateBuilder, StateValue};
+     +     use crate::aspect::{AspectId, StateBuilder, StateValue};
+
+           #[test]
+           fn test_zone_creation() {
+
+  ✔  Edit src\transition.rs: use crate::aspect::{AspectId, ... => use crate::aspect::{AspectId, .…
+       mod tests {
+           use super::*;
+           use crate::active_in::ActiveIn;
+     -     use crate::aspect::{AspectId, State, StateBuilder, StateValue};
+     +     use crate::aspect::{AspectId, StateBuilder, StateValue};
+           use crate::update::Update;
+
+           #[test]
+
+  ✔  Shell cd "C:\Users\AS\Documents\state-zen 3.0"; if($?) {cargo test} [current working directo…
+     ... 前 37 行已隐藏 ...（输入ctrl+r查看全部）
+     finished in 0.00s
+
+
+        Compiling state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0)
+         Finished `test` profile [unoptimized + debuginfo] target(s) in 2.01s
+          Running unittests src\lib.rs
+     (target\debug\deps\state_zen-6ee3f16823128497.exe)
+        Doc-tests state_zen
+
+
+✦ 所有测试通过！现在让我创建一个示例文件来展示如何使用这个状态机蓝图系统：
+  ✔  Write File 正在写入 examples\basic_state_machine.rs
+     ... 前 16 行已隐藏 ...（输入ctrl+r查看全部）
+             StateValue::Integer(100),
+         );
+
+         let is_charging_aspect = StateAspect::new(
+             AspectId(2),
+             "is_charging",
+             StateValue::Bool(false),
+         );
+
+         // Create a zone that activates when charging
+         let charging_zone = Zone::new(
+             "charging_zone",
+             ActiveIn::aspect_bool(AspectId(2), true),
+         )
+         .with_on_enter(|| {
+             println!("🔋 Started charging - entering charging zone");
+         })
+         .with_on_exit(|| {
+             println!("🔋 Stopped charging - exiting charging zone");
+         });
+
+         // Create a low battery zone
+         let low_battery_zone = Zone::new(
+             "low_battery_zone",
+             ActiveIn::aspect_lt(AspectId(1), 20),
+         )
+         .with_on_enter(|| {
+             println!("⚠️  Low battery warning!");
+         })
+         .with_on_exit(|| {
+             println!("✓ Battery level normal");
+         });
+
+         // Create a running zone
+         let running_zone = Zone::new(
+             "running_zone",
+             ActiveIn::aspect_string_eq(AspectId(0), "running"),
+         )
+         .with_on_enter(|| {
+             println!("▶️  System started");
+         })
+         .with_on_exit(|| {
+             println!("⏸️  System stopped");
+         });
+
+         // Create transitions
+         let start_transition = Transition::new(
+             "start",
+             ActiveIn::aspect_string_eq(AspectId(0), "idle"),
+             EventId::new("start_button"),
+             Update::set_string(AspectId(0), "running"),
+         )
+         .with_on_tran(|| {
+             println!("🎯 Start button pressed - transitioning to running");
+         });
+
+         let stop_transition = Transition::new(
+             "stop",
+             ActiveIn::aspect_string_eq(AspectId(0), "running"),
+             EventId::new("stop_button"),
+             Update::set_string(AspectId(0), "idle"),
+         )
+         .with_on_tran(|| {
+             println!("⏹️  Stop button pressed - transitioning to idle");
+         });
+
+         let charge_transition = Transition::new(
+             "charge",
+             ActiveIn::always(),
+             EventId::new("charge"),
+             Update::set_bool(AspectId(2), true),
+         )
+         .with_on_tran(|| {
+             println!("🔌 Charger connected");
+         });
+
+         let uncharge_transition = Transition::new(
+             "uncharge",
+             ActiveIn::always(),
+             EventId::new("uncharge"),
+             Update::set_bool(AspectId(2), false),
+         )
+         .with_on_tran(|| {
+             println!("🔌 Charger disconnected");
+         });
+
+         let consume_battery_transition = Transition::new(
+             "consume_battery",
+             ActiveIn::aspect_string_eq(AspectId(0), "running"),
+             EventId::new("tick"),
+             Update::compose(vec![
+                 Update::conditional_else(
+                     |s| s.get(AspectId(2)).map_or(false, |v| matches!(v,
+     StateValue::Bool(true))),
+                     Update::increment(AspectId(1)), // charging: increase battery
+                     Update::decrement(AspectId(1)), // running: decrease battery
+                 ),
+                 Update::conditional(
+                     |s| s.get(AspectId(1)).map_or(false, |v| matches!(v, StateValue::
+     Integer(i) if *i <= 0)),
+                     Update::compose(vec![
+                         Update::set_string(AspectId(0), "idle"),
+                         Update::set_int(AspectId(1), 0),
+                     ]),
+                 ),
+             ]),
+         );
+
+         // Build the state machine blueprint
+         let blueprint = BlueprintBuilder::new()
+             .id("device_controller")
+             .aspect(mode_aspect)
+             .aspect(battery_aspect)
+             .aspect(is_charging_aspect)
+             .zone(charging_zone)
+             .zone(low_battery_zone)
+             .zone(running_zone)
+             .transition(start_transition)
+             .transition(stop_transition)
+             .transition(charge_transition)
+             .transition(uncharge_transition)
+             .transition(consume_battery_transition)
+             .build()
+             .unwrap();
+
+         // Print blueprint statistics
+         let stats = blueprint.stats();
+         println!("\n📊 Blueprint Statistics:");
+         println!("  Aspects: {}", stats.aspect_count);
+         println!("  Zones: {}", stats.zone_count);
+         println!("  Transitions: {}", stats.transition_count);
+         println!("  Events: {}", stats.event_count);
+
+         // Create initial state
+         let mut state = blueprint.create_initial_state();
+         println!("\n📍 Initial State:");
+         print_state(&blueprint, &state);
+
+         println!("\n" + "=".repeat(50).as_str());
+
+         // Simulate state machine events
+         println!("\n🎬 Simulation:\n");
+
+         // Start the device
+         simulate_event(&blueprint, &mut state, &EventId::new("start_button"));
+         simulate_event(&blueprint, &mut state, &EventId::new("tick"));
+         simulate_event(&blueprint, &mut state, &EventId::new("tick"));
+         simulate_event(&blueprint, &mut state, &EventId::new("tick"));
+
+         // Connect charger
+         simulate_event(&blueprint, &mut state, &EventId::new("charge"));
+         simulate_event(&blueprint, &mut state, &EventId::new("tick"));
+         simulate_event(&blueprint, &mut state, &EventId::new("tick"));
+
+         // Disconnect charger
+         simulate_event(&blueprint, &mut state, &EventId::new("uncharge"));
+
+         // Continue running until low battery
+         simulate_event(&blueprint, &mut state, &EventId::new("tick"));
+         simulate_event(&blueprint, &mut state, &EventId::new("tick"));
+         simulate_event(&blueprint, &mut state, &EventId::new("tick"));
+
+         // Stop the device
+         simulate_event(&blueprint, &mut state, &EventId::new("stop_button"));
+
+         println!("\n✅ Simulation complete!");
+     }
+
+     fn simulate_event(blueprint: &StateMachineBlueprint, state: &mut State, event:
+     &EventId) {
+         println!("📨 Event: {:?}", event.0);
+
+         // Find and apply matching transitions
+         for transition in blueprint.transitions() {
+             if transition.event == *event && transition.is_active(state) {
+                 println!("  → Transition '{}' activated", transition.id);
+                 transition.trigger();
+                 *state = transition.apply(state.clone());
+                 break;
+             }
+         }
+
+         // Check zone activations
+         check_zone_activations(blueprint, state);
+
+         println!("  Current State:");
+         print_state(blueprint, state);
+         println!();
+     }
+
+     fn check_zone_activations(blueprint: &StateMachineBlueprint, state: &State) {
+         let active_zones: Vec<_> = blueprint
+             .zones()
+             .iter()
+             .filter(|z| z.is_active(state))
+             .map(|z| z.id.as_str())
+             .collect();
+
+         if !active_zones.is_empty() {
+             println!("  Active zones: {}", active_zones.join(", "));
+         }
+     }
+
+     fn print_state(blueprint: &StateMachineBlueprint, state: &State) {
+         for aspect in blueprint.aspects() {
+             if let Some(value) = state.get(aspect.id) {
+                 println!("    {}: {}", aspect.name, value);
+             }
+         }
+     }
+
+  ✔  Edit src\lib.rs: pub mod aspect;... => pub mod aspect;...
+       pub mod update;
+       pub mod blueprint;
+
+     - pub use aspect::{StateAspect, AspectId, StateValue};
+     + pub use aspect::{StateAspect, AspectId, StateValue, State, StateBuilder};
+       pub use active_in::{ActiveIn, Predicate};
+       pub use zone::Zone;
+       pub use transition::Transition;
+       pub use update::Update;
+       pub use blueprint::StateMachineBlueprint;
+     + 
+     + /// Prelude module for convenient imports
+     + pub mod prelude {
+     +     pub use crate::aspect::{StateAspect, AspectId, StateValue, State, 
+     StateBuilder};
+     +     pub use crate::active_in::{ActiveIn, Predicate};
+     +     pub use crate::zone::Zone;
+     +     pub use crate::transition::Transition;
+     +     pub use crate::update::Update;
+     +     pub use crate::blueprint::StateMachineBlueprint;
+     + }
+
+  x  Shell cd "C:\Users\AS\Documents\state-zen 3.0"; if($?) {cargo check --examples} [current wor…
+     ... 前 20 行已隐藏 ...（输入ctrl+r查看全部）
+       = help: consider importing this struct instead:
+               state_zen::transition::EventId
+       = help: consider importing this struct instead:
+               state_zen::blueprint::BlueprintBuilder
+
+     For more information about this error, try `rustc --explain E0432`.
+     error: could not compile `state-zen` (example "basic_state_machine") due to 2
+     previous errors
+     Command exited with code: 1
+
+  ✔  Edit examples\basic_state_machine.rs: use state_zen::prelude::*;... => use state_zen::prelud…
+       use state_zen::prelude::*;
+     - use state_zen::{AspectId, StateAspect, StateValue, Zone, Transition, EventId, 
+     BlueprintBuilder};
+     + use state_zen::{AspectId, StateAspect, StateValue, Zone, Transition};
+     + use state_zen::transition::EventId;
+     + use state_zen::blueprint::BlueprintBuilder;
+       use state_zen::active_in::ActiveIn;
+       use state_zen::update::Update;
+
+
+  ✔  Edit examples\basic_state_machine.rs: println!("\n" + "=".repeat(50)... => println!("{}", "=…
+       println!("\n📍 Initial State:");
+       print_state(&blueprint, &state);
+
+     - println!("\n" + "=".repeat(50).as_str());
+     + println!("{}", "=".repeat(50));
+
+       // Simulate state machine events
+       println!("\n🎬 Simulation:\n");
+
+  ✔  Shell cd "C:\Users\AS\Documents\state-zen 3.0"; if($?) {cargo check --examples} [current wor…
+
+         Checking state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0)
+         Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.12s
+
+
+  ✔  Shell cd "C:\Users\AS\Documents\state-zen 3.0"; if($?) {cargo run --example basic_state_mach…
+     ... 前 112 行已隐藏 ...（输入ctrl+r查看全部）
+         mode: "idle"
+
+
+     ✅ Simulation complete!
+
+        Compiling state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0)
+         Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.85s
+          Running `target\debug\examples\basic_state_machine.exe`
+
+
+✦ 完美！状态机蓝图系统已经成功实现。让我创建一个 README 文档来说明项目的使用方法：
+  ✔  Write File 正在写入 README.md
+     # state-zen
+
+     一个面向组合性与表达力的状态机蓝图系统，采用 Rust
+     实现。支持高维状态向量、谓词驱动的行为绑定，以及声明式状态演化。
+
+     ## 核心概念
+
+     ### StateAspect（状态面）
+     状态的独立维度，每个 `StateAspect` 有独立的类型和取值范围。
+
+     ### ActiveIn（激活条件）
+     谓词函数 `(State → bool)`
+     ，定义行为在哪些状态下被激活。替代传统状态机的硬编码源状态。
+
+     ### Zone（区域）
+     状态行为容器，包含：
+     - `activeIn`: 定义覆盖的状态集合
+     - `on_enter`: 进入区域时的副作用
+     - `on_exit`: 离开区域时的副作用
+
+     ### Transition（转移）
+     事件驱动的状态变更，包含：
+     - `activeIn`: 何时监听事件
+     - `event`: 监听的事件类型
+     - `update`: 如何计算新状态（纯函数）
+     - `on_tran`: 转移发生时的副作用
+
+     ### Update（状态更新）
+     纯函数式的状态变换算子，支持：
+     - 基本设置（set, increment, decrement, toggle）
+     - 条件更新（conditional）
+     - 组合操作（compose）
+
+     ## 快速开始
+
+     ```rust
+     use state_zen::prelude::*;
+     use state_zen::{BlueprintBuilder, Zone, Transition, EventId};
+     use state_zen::active_in::ActiveIn;
+     use state_zen::update::Update;
+
+     // 定义状态面
+     let mode = StateAspect::new(AspectId(0), "mode", StateValue::String("idle".to
+     _string()));
+     let battery = StateAspect::new(AspectId(1), "battery", StateValue::Integer(100));
+
+     // 定义区域
+     let low_battery_zone = Zone::new(
+         "low_battery",
+         ActiveIn::aspect_lt(AspectId(1), 20),
+     )
+     .with_on_enter(|| println!("⚠️  Low battery!"));
+
+     // 定义转移
+     let start_transition = Transition::new(
+         "start",
+         ActiveIn::aspect_string_eq(AspectId(0), "idle"),
+         EventId::new("start"),
+         Update::set_string(AspectId(0), "running"),
+     )
+     .with_on_tran(|| println!("Starting..."));
+
+     // 构建蓝图
+     let blueprint = BlueprintBuilder::new()
+         .id("device")
+         .aspect(mode)
+         .aspect(battery)
+         .zone(low_battery_zone)
+         .transition(start_transition)
+         .build()
+         .unwrap();
+
+     // 创建初始状态
+     let mut state = blueprint.create_initial_state();
+     ```
+
+     ## ActiveIn 算子
+
+     ```rust
+     // 基本谓词
+     ActiveIn::aspect_bool(id, true)           // 布尔值等于
+     ActiveIn::aspect_eq(id, 42)                // 整数等于
+     ActiveIn::aspect_lt(id, 10)                // 小于
+     ActiveIn::aspect_gt(id, 0)                 // 大于
+     ActiveIn::aspect_in_range(id, 0, 100)      // 范围
+     ActiveIn::aspect_string_eq(id, "active")   // 字符串等于
+
+     // 逻辑组合
+     let predicate = ActiveIn::aspect_bool(id1, true)
+         .and(ActiveIn::aspect_lt(id2, 10));
+     ```
+
+     ## Update 算子
+
+     ```rust
+     // 基本操作
+     Update::set(id, StateValue::Bool(true))   // 设置值
+     Update::set_bool(id, true)                 // 设置布尔
+     Update::set_int(id, 42)                    // 设置整数
+     Update::increment(id)                      // 自增
+     Update::decrement(id)                      // 自减
+     Update::add(id, 5)                         // 加法
+     Update::toggle(id)                         // 切换布尔
+
+     // 条件更新
+     Update::conditional(
+         |s| s.get(id).map_or(false, |v| matches!(v, StateValue::Integer(i) if *i <
+     10)),
+         Update::increment(id),
+     )
+
+     // 组合操作
+     Update::compose(vec![
+         Update::toggle(id1),
+         Update::increment(id2),
+     ])
+     ```
+
+     ## 运行示例
+
+     ```bash
+     cargo run --example basic_state_machine
+     ```
+
+     ## 项目结构
+
+     ```
+     src/
+     ├── lib.rs          # 库入口，导出公共 API
+     ├── aspect.rs       # StateAspect 和 State 实现
+     ├── active_in.rs    # ActiveIn 谓词算子
+     ├── zone.rs         # Zone 区域定义
+     ├── transition.rs   # Transition 转移定义
+     ├── update.rs       # Update 状态更新算子
+     └── blueprint.rs    # StateMachineBlueprint 蓝图
+     ```
+
+     ## 设计哲学
+
+     - **分离关注点**: 每个 `StateAspect` 独立
+     - **声明式行为绑定**: 通过 `activeIn` 谓词
+     - **纯状态演化**: `update` 无副作用
+     - **高可组合性**: 支持谓词和更新的组合操作
+
+     ## 运行测试
+
+     ```bash
+     cargo test
+     ```
+
+     ## 编译检查
+
+     ```bash
+     cargo check
+     ```
+
+     ## 注意事项
+
+     当前实现是状态机蓝图层，不包含运行时状态机实例化。蓝图可以通过编译/验证后用于实例化
+     可运行的状态机（待实现）。
+
+✦ 状态机蓝图系统已经完成！以下是实现总结：
+
+  实现内容
+
+  核心模块
+
+   1. aspect.rs - 状态面和状态向量
+      - StateAspect: 状态的独立维度
+      - State: 高维状态向量表示
+      - StateBuilder: 状态构建器
+
+   2. active_in.rs - 激活条件算子
+      - ActiveIn: 谓词函数封装
+      - 支持布尔、整数、字符串比较
+      - 支持逻辑组合（and, or, not）
+      - ActiveInBuilder: 谓词构建器
+
+   3. zone.rs - 区域定义
+      - Zone: 状态行为区域
+      - 生命周期处理器（on_enter, on_exit）
+      - ZoneBuilder: 区域构建器
+
+   4. transition.rs - 转移定义
+      - Transition: 事件驱动的状态变更
+      - EventId: 事件类型标识
+      - TransitionBuilder: 转移构建器
+
+   5. update.rs - 状态更新算子
+      - Update: 纯函数式状态变换
+      - 基本操作（set, increment, decrement, toggle, add）
+      - 条件更新（conditional）
+      - 组合操作（compose）
+      - UpdateBuilder: 更新构建器
+
+   6. blueprint.rs - 状态机蓝图
+      - StateMachineBlueprint: 完整的状态机定义
+      - 支持验证（validate）
+      - 创建初始状态（create_initial_state）
+      - 统计信息（stats）
+      - BlueprintBuilder: 蓝图构建器
+
+  测试覆盖
+
+   - 27 个单元测试全部通过
+   - 覆盖所有核心功能
+
+  示例程序
+
+   - examples/basic_state_machine.rs: 展示如何创建和使用状态机蓝图
+
+  文档
+
+   - README.md: 完整的使用文档和 API 说明
+
+  设计特点
+
+✦  - 两层架构: 蓝图定义层 + 状态机实例化层（后者待实现）
+   - 声明式: 通过谓词和算子组合定义行为
+   - 类型安全: 利用 Rust 类型系统确保正确性
+   - 可组合: 支持灵活的谓词和更新组合
+   - 无副作用: update 操作是纯函数
+
+    > /export file                                                                               
+
+
+glm-4.7 上下文剩余 71% | 智能模式 | 思考: 关闭
+cwd: ~\Documents\state-zen 3.0 | ◯ basic_state_machine.rs | 11 MCP 服务
+
