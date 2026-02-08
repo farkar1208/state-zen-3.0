@@ -1,0 +1,239 @@
+use crate::blueprint::StateMachineBlueprint;
+use crate::transition::EventId;
+use crate::aspect::State;
+use std::collections::HashMap;
+
+/// Runtime state machine instance
+///
+/// StateMachineRuntime is the executable instance of a state machine blueprint.
+/// It maintains the current state, tracks zone activations, and provides event dispatch.
+pub struct StateMachineRuntime {
+    /// Reference to the blueprint
+    blueprint: StateMachineBlueprint,
+    
+    /// Current state
+    state: State,
+    
+    /// Zone activation tracking (zone_id -> active)
+    zone_activations: HashMap<String, bool>,
+}
+
+impl StateMachineRuntime {
+    /// Create a new runtime instance from a blueprint
+    pub fn new(blueprint: StateMachineBlueprint) -> Self {
+        let state = blueprint.create_initial_state();
+        let zone_activations = blueprint
+            .zones()
+            .iter()
+            .map(|zone| (zone.id.clone(), false))
+            .collect();
+        
+        Self {
+            blueprint,
+            state,
+            zone_activations,
+        }
+    }
+    
+    /// Get the current state
+    pub fn state(&self) -> &State {
+        &self.state
+    }
+    
+    /// Get the blueprint reference
+    pub fn blueprint(&self) -> &StateMachineBlueprint {
+        &self.blueprint
+    }
+    
+    /// Dispatch an event to the state machine
+    ///
+    /// Returns true if a transition was triggered, false otherwise
+    pub fn dispatch(&mut self, event: &EventId) -> bool {
+        let mut triggered = false;
+        
+        // Find and apply matching transitions
+        for transition in self.blueprint.transitions() {
+            if transition.event == *event && transition.is_active(&self.state) {
+                // Execute transition side effect
+                transition.trigger();
+                
+                // Apply state update
+                self.state = transition.apply(self.state.clone());
+                
+                triggered = true;
+                break; // Only trigger first matching transition
+            }
+        }
+        
+        // Update zone activations after state change
+        if triggered {
+            self.update_zone_activations();
+        }
+        
+        triggered
+    }
+    
+    /// Dispatch an event by string
+    pub fn dispatch_str(&mut self, event: &str) -> bool {
+        self.dispatch(&EventId::new(event))
+    }
+    
+    /// Update zone activations and trigger enter/exit handlers
+    fn update_zone_activations(&mut self) {
+        for zone in self.blueprint.zones() {
+            let is_active = zone.is_active(&self.state);
+            let was_active = *self.zone_activations.get(&zone.id).unwrap_or(&false);
+            
+            // Zone just became active
+            if is_active && !was_active {
+                zone.enter();
+                self.zone_activations.insert(zone.id.clone(), true);
+            }
+            // Zone just became inactive
+            else if !is_active && was_active {
+                zone.exit();
+                self.zone_activations.insert(zone.id.clone(), false);
+            }
+        }
+    }
+    
+    /// Get currently active zone IDs
+    pub fn active_zones(&self) -> Vec<String> {
+        self.zone_activations
+            .iter()
+            .filter(|(_, active)| **active)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+    
+    /// Check if a specific zone is active
+    pub fn is_zone_active(&self, zone_id: &str) -> bool {
+        *self.zone_activations.get(zone_id).unwrap_or(&false)
+    }
+    
+    /// Reset the state machine to initial state
+    pub fn reset(&mut self) {
+        self.state = self.blueprint.create_initial_state();
+        self.zone_activations = self.blueprint
+            .zones()
+            .iter()
+            .map(|zone| (zone.id.clone(), false))
+            .collect();
+        
+        // Initialize zone activations
+        self.update_zone_activations();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::prelude::*;
+    use crate::active_in::ActiveIn;
+    use crate::update::Update;
+    use crate::blueprint::BlueprintBuilder;
+    
+    #[test]
+    fn test_runtime_creation() {
+        let aspect = StateAspect::new(AspectId(0), "mode", StateValue::String("idle".to_string()));
+        
+        let blueprint = BlueprintBuilder::new()
+            .id("test")
+            .aspect(aspect)
+            .build()
+            .unwrap();
+        
+        let runtime = StateMachineRuntime::new(blueprint);
+        
+        assert_eq!(runtime.state().get(AspectId(0)), Some(&StateValue::String("idle".to_string())));
+    }
+    
+    #[test]
+    fn test_runtime_dispatch() {
+        let aspect = StateAspect::new(AspectId(0), "mode", StateValue::String("idle".to_string()));
+        
+        let transition = Transition::new(
+            "start",
+            ActiveIn::aspect_string_eq(AspectId(0), "idle"),
+            EventId::new("start"),
+            Update::set_string(AspectId(0), "running"),
+        );
+        
+        let blueprint = BlueprintBuilder::new()
+            .id("test")
+            .aspect(aspect)
+            .transition(transition)
+            .build()
+            .unwrap();
+        
+        let mut runtime = StateMachineRuntime::new(blueprint);
+        
+        assert!(runtime.dispatch_str("start"));
+        assert_eq!(runtime.state().get(AspectId(0)), Some(&StateValue::String("running".to_string())));
+    }
+    
+    #[test]
+    fn test_runtime_zone_activation() {
+        let mode_aspect = StateAspect::new(AspectId(0), "mode", StateValue::String("idle".to_string()));
+        let battery_aspect = StateAspect::new(AspectId(1), "battery", StateValue::Integer(100));
+        
+        let zone = Zone::new("low_battery", ActiveIn::aspect_lt(AspectId(1), 20));
+        
+        let transition = Transition::new(
+            "consume",
+            ActiveIn::always(),
+            EventId::new("consume"),
+            Update::set_int(AspectId(1), 10),
+        );
+        
+        let blueprint = BlueprintBuilder::new()
+            .id("test")
+            .aspect(mode_aspect)
+            .aspect(battery_aspect)
+            .zone(zone)
+            .transition(transition)
+            .build()
+            .unwrap();
+        
+        let mut runtime = StateMachineRuntime::new(blueprint);
+        
+        assert!(!runtime.is_zone_active("low_battery"));
+        
+        // Dispatch event to lower battery
+        runtime.dispatch_str("consume");
+        
+        assert!(runtime.is_zone_active("low_battery"));
+    }
+    
+    #[test]
+    fn test_runtime_reset() {
+        let aspect = StateAspect::new(AspectId(0), "mode", StateValue::String("idle".to_string()));
+        
+        let transition = Transition::new(
+            "start",
+            ActiveIn::always(),
+            EventId::new("start"),
+            Update::set_string(AspectId(0), "running"),
+        );
+        
+        let zone = Zone::new("running", ActiveIn::aspect_string_eq(AspectId(0), "running"));
+        
+        let blueprint = BlueprintBuilder::new()
+            .id("test")
+            .aspect(aspect)
+            .transition(transition)
+            .zone(zone)
+            .build()
+            .unwrap();
+        
+        let mut runtime = StateMachineRuntime::new(blueprint);
+        
+        runtime.dispatch_str("start");
+        assert_eq!(runtime.state().get(AspectId(0)), Some(&StateValue::String("running".to_string())));
+        assert!(runtime.is_zone_active("running"));
+        
+        runtime.reset();
+        assert_eq!(runtime.state().get(AspectId(0)), Some(&StateValue::String("idle".to_string())));
+        assert!(!runtime.is_zone_active("running"));
+    }
+}

@@ -1,5 +1,4 @@
-use state_zen::prelude::*;
-use state_zen::{AspectId, StateAspect, StateValue, Zone, Transition};
+use state_zen::{AspectId, StateAspect, StateValue, Zone, Transition, StateMachineRuntime};
 use state_zen::transition::EventId;
 use state_zen::blueprint::BlueprintBuilder;
 use state_zen::active_in::ActiveIn;
@@ -147,10 +146,11 @@ fn main() {
     println!("  Transitions: {}", stats.transition_count);
     println!("  Events: {}", stats.event_count);
 
-    // Create initial state
-    let mut state = blueprint.create_initial_state();
+    // Create runtime state machine instance
+    let mut runtime = StateMachineRuntime::new(blueprint);
+    
     println!("\n📍 Initial State:");
-    print_state(&blueprint, &state);
+    print_state(&runtime);
 
     println!("{}", "=".repeat(50));
 
@@ -158,68 +158,67 @@ fn main() {
     println!("\n🎬 Simulation:\n");
 
     // Start the device
-    simulate_event(&blueprint, &mut state, &EventId::new("start_button"));
-    simulate_event(&blueprint, &mut state, &EventId::new("tick"));
-    simulate_event(&blueprint, &mut state, &EventId::new("tick"));
-    simulate_event(&blueprint, &mut state, &EventId::new("tick"));
+    runtime.dispatch_str("start_button");
+    print_runtime_state(&runtime);
+
+    // Consume battery
+    runtime.dispatch_str("tick");
+    print_runtime_state(&runtime);
+    
+    runtime.dispatch_str("tick");
+    print_runtime_state(&runtime);
+    
+    runtime.dispatch_str("tick");
+    print_runtime_state(&runtime);
 
     // Connect charger
-    simulate_event(&blueprint, &mut state, &EventId::new("charge"));
-    simulate_event(&blueprint, &mut state, &EventId::new("tick"));
-    simulate_event(&blueprint, &mut state, &EventId::new("tick"));
+    runtime.dispatch_str("charge");
+    print_runtime_state(&runtime);
+    
+    runtime.dispatch_str("tick");
+    print_runtime_state(&runtime);
+    
+    runtime.dispatch_str("tick");
+    print_runtime_state(&runtime);
 
     // Disconnect charger
-    simulate_event(&blueprint, &mut state, &EventId::new("uncharge"));
+    runtime.dispatch_str("uncharge");
+    print_runtime_state(&runtime);
 
     // Continue running until low battery
-    simulate_event(&blueprint, &mut state, &EventId::new("tick"));
-    simulate_event(&blueprint, &mut state, &EventId::new("tick"));
-    simulate_event(&blueprint, &mut state, &EventId::new("tick"));
+    runtime.dispatch_str("tick");
+    print_runtime_state(&runtime);
+    
+    runtime.dispatch_str("tick");
+    print_runtime_state(&runtime);
+    
+    runtime.dispatch_str("tick");
+    print_runtime_state(&runtime);
 
     // Stop the device
-    simulate_event(&blueprint, &mut state, &EventId::new("stop_button"));
+    runtime.dispatch_str("stop_button");
+    print_runtime_state(&runtime);
 
     println!("\n✅ Simulation complete!");
 }
 
-fn simulate_event(blueprint: &StateMachineBlueprint, state: &mut State, event: &EventId) {
-    println!("📨 Event: {:?}", event.0);
-
-    // Find and apply matching transitions
-    for transition in blueprint.transitions() {
-        if transition.event == *event && transition.is_active(state) {
-            println!("  → Transition '{}' activated", transition.id);
-            transition.trigger();
-            *state = transition.apply(state.clone());
-            break;
-        }
-    }
-
-    // Check zone activations
-    check_zone_activations(blueprint, state);
-
-    println!("  Current State:");
-    print_state(blueprint, state);
-    println!();
-}
-
-fn check_zone_activations(blueprint: &StateMachineBlueprint, state: &State) {
-    let active_zones: Vec<_> = blueprint
-        .zones()
-        .iter()
-        .filter(|z| z.is_active(state))
-        .map(|z| z.id.as_str())
-        .collect();
-
-    if !active_zones.is_empty() {
-        println!("  Active zones: {}", active_zones.join(", "));
-    }
-}
-
-fn print_state(blueprint: &StateMachineBlueprint, state: &State) {
-    for aspect in blueprint.aspects() {
-        if let Some(value) = state.get(aspect.id) {
+fn print_state(runtime: &StateMachineRuntime) {
+    for aspect in runtime.blueprint().aspects() {
+        if let Some(value) = runtime.state().get(aspect.id) {
             println!("    {}: {}", aspect.name, value);
         }
     }
+}
+
+fn print_runtime_state(runtime: &StateMachineRuntime) {
+    println!("📨 Event dispatched");
+    
+    let active_zones = runtime.active_zones();
+    if !active_zones.is_empty() {
+        println!("  Active zones: {}", active_zones.join(", "));
+    }
+    
+    println!("  Current State:");
+    print_state(runtime);
+    println!();
 }
