@@ -48,6 +48,9 @@ impl StateMachineRuntime {
     /// Dispatch an event to the state machine
     ///
     /// Returns true if a transition was triggered, false otherwise
+    /// 
+    /// # Panics
+    /// Panics if a state update results in a value outside the defined range constraints.
     pub fn dispatch(&mut self, event: &EventId) -> bool {
         let mut triggered = false;
         
@@ -58,7 +61,12 @@ impl StateMachineRuntime {
                 transition.trigger();
                 
                 // Apply state update
-                self.state = transition.apply(self.state.clone());
+                let new_state = transition.apply(self.state.clone());
+                
+                // Validate new state values against aspect constraints
+                self.validate_state(&new_state).expect("State validation failed");
+                
+                self.state = new_state;
                 
                 triggered = true;
                 break; // Only trigger first matching transition
@@ -95,6 +103,18 @@ impl StateMachineRuntime {
                 self.zone_activations.insert(zone.id.clone(), false);
             }
         }
+    }
+    
+    /// Validate a state against all aspect constraints
+    fn validate_state(&self, state: &State) -> Result<(), String> {
+        for aspect_id in state.aspect_ids() {
+            if let Some(aspect) = self.blueprint.get_aspect(aspect_id) {
+                if let Some(value) = state.get(aspect_id) {
+                    aspect.validate_value(value)?;
+                }
+            }
+        }
+        Ok(())
     }
     
     /// Get currently active zone IDs

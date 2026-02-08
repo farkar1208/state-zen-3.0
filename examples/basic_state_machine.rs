@@ -16,7 +16,8 @@ fn main() {
         AspectId(1),
         "battery",
         StateValue::Integer(100),
-    );
+    )
+    .with_range(StateValue::Integer(0), StateValue::Integer(100));
 
     let is_charging_aspect = StateAspect::new(
         AspectId(2),
@@ -107,7 +108,9 @@ fn main() {
         EventId::new("tick"),
         Update::compose(vec![
             Update::conditional_else(
-                |s| s.get(AspectId(2)).map_or(false, |v| matches!(v, StateValue::Bool(true))),
+                // Charging and battery < 100: increase, otherwise decrease
+                |s| s.get(AspectId(2)).map_or(false, |v| matches!(v, StateValue::Bool(true)))
+                     && s.get(AspectId(1)).map_or(false, |v| matches!(v, StateValue::Integer(i) if *i < 100)),
                 Update::increment(AspectId(1)), // charging: increase battery
                 Update::decrement(AspectId(1)), // running: decrease battery
             ),

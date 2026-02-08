@@ -14,6 +14,34 @@ pub enum StateValue {
     String(String),
 }
 
+impl StateValue {
+    /// Validate this value against constraints
+    pub fn validate(&self, min: Option<&StateValue>, max: Option<&StateValue>) -> Result<(), String> {
+        if let (Some(min_val), Some(max_val)) = (min, max) {
+            match (self, min_val, max_val) {
+                (StateValue::Integer(v), StateValue::Integer(min_v), StateValue::Integer(max_v)) => {
+                    if v < min_v || v > max_v {
+                        return Err(format!(
+                            "Integer value {} out of range [{}, {}]",
+                            v, min_v, max_v
+                        ));
+                    }
+                }
+                (StateValue::Float(v), StateValue::Float(min_v), StateValue::Float(max_v)) => {
+                    if v < min_v || v > max_v {
+                        return Err(format!(
+                            "Float value {} out of range [{}, {}]",
+                            v, min_v, max_v
+                        ));
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+}
+
 impl fmt::Display for StateValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -31,6 +59,10 @@ pub struct StateAspect {
     pub id: AspectId,
     pub name: String,
     pub default_value: StateValue,
+    /// Optional minimum value constraint
+    pub min_value: Option<StateValue>,
+    /// Optional maximum value constraint
+    pub max_value: Option<StateValue>,
 }
 
 impl StateAspect {
@@ -39,7 +71,33 @@ impl StateAspect {
             id,
             name: name.into(),
             default_value,
+            min_value: None,
+            max_value: None,
         }
+    }
+    
+    /// Set minimum value constraint
+    pub fn with_min(mut self, min: StateValue) -> Self {
+        self.min_value = Some(min);
+        self
+    }
+    
+    /// Set maximum value constraint
+    pub fn with_max(mut self, max: StateValue) -> Self {
+        self.max_value = Some(max);
+        self
+    }
+    
+    /// Set both min and max value constraints
+    pub fn with_range(mut self, min: StateValue, max: StateValue) -> Self {
+        self.min_value = Some(min);
+        self.max_value = Some(max);
+        self
+    }
+    
+    /// Validate a value against this aspect's constraints
+    pub fn validate_value(&self, value: &StateValue) -> Result<(), String> {
+        value.validate(self.min_value.as_ref(), self.max_value.as_ref())
     }
 }
 
