@@ -1,4 +1,4 @@
-# StateZen DSL 语法规则（Whitespace-Delimited）
+# SZD （StateZen Define DSL） 语法规则
 
 ## 顶层结构
 ```

@@ -126,14 +126,14 @@ fn main() {
         Update::compose(vec![
             Update::conditional_else(
                 // 如果在充电且电量 < 100，增加电量；否则减少电量
-                |s| s.get(AspectId(2)).map_or(false, |v| matches!(v, StateValue::Bool(true)))
-                     && s.get(AspectId(1)).map_or(false, |v| matches!(v, StateValue::Integer(i) if *i < 100)),
+                |s| s.get_as::<bool>(AspectId(2)).map_or(false, |&v| v)
+                     && s.get_as::<i64>(AspectId(1)).map_or(false, |&v| v < 100),
                 Update::increment(AspectId(1)),
                 Update::decrement(AspectId(1))
             ),
             // 如果电量耗尽，自动停止
             Update::conditional(
-                |s| s.get(AspectId(1)).map_or(false, |v| matches!(v, StateValue::Integer(i) if *i <= 0)),
+                |s| s.get_as::<i64>(AspectId(1)).map_or(false, |&v| v <= 0),
                 Update::compose(vec![
                     Update::set_string(AspectId(0), "idle"),
                     Update::set_int(AspectId(1), 0),
@@ -243,7 +243,18 @@ fn main() {
 fn print_state(runtime: &StateMachineRuntime) {
     for aspect in runtime.blueprint().aspects() {
         if let Some(value) = runtime.state().get(aspect.id) {
-            println!("     {} = {}", aspect.name, value);
+            // Try to format common types
+            if let Some(b) = value.downcast_ref::<bool>() {
+                println!("     {} = {}", aspect.name, b);
+            } else if let Some(i) = value.downcast_ref::<i64>() {
+                println!("     {} = {}", aspect.name, i);
+            } else if let Some(f) = value.downcast_ref::<f64>() {
+                println!("     {} = {}", aspect.name, f);
+            } else if let Some(s) = value.downcast_ref::<String>() {
+                println!("     {} = {}", aspect.name, s);
+            } else {
+                println!("     {} = {:?}", aspect.name, value);
+            }
         }
     }
 }

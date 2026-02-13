@@ -1,4 +1,4 @@
-use crate::aspect::{AspectId, State, StateValue};
+use crate::aspect::{AspectId, State};
 use std::sync::Arc;
 
 /// A predicate function that evaluates whether a behavior is active in a given state
@@ -40,25 +40,17 @@ impl ActiveIn {
     pub fn aspect_bool(aspect_id: AspectId, value: bool) -> Self {
         Self::new(move |state| {
             state
-                .get(aspect_id)
-                .and_then(|v| match v {
-                    StateValue::Bool(b) => Some(*b),
-                    _ => None,
-                })
-                .map_or(false, |b| b == value)
+                .get_as::<bool>(aspect_id)
+                .map_or(false, |b| *b == value)
         })
     }
 
-    /// Check if an aspect has a specific integer value
+    /// Check if an aspect has a specific integer value (i64)
     pub fn aspect_eq(aspect_id: AspectId, value: i64) -> Self {
         Self::new(move |state| {
             state
-                .get(aspect_id)
-                .and_then(|v| match v {
-                    StateValue::Integer(i) => Some(*i),
-                    _ => None,
-                })
-                .map_or(false, |i| i == value)
+                .get_as::<i64>(aspect_id)
+                .map_or(false, |i| *i == value)
         })
     }
 
@@ -66,12 +58,8 @@ impl ActiveIn {
     pub fn aspect_lt(aspect_id: AspectId, value: i64) -> Self {
         Self::new(move |state| {
             state
-                .get(aspect_id)
-                .and_then(|v| match v {
-                    StateValue::Integer(i) => Some(*i),
-                    _ => None,
-                })
-                .map_or(false, |i| i < value)
+                .get_as::<i64>(aspect_id)
+                .map_or(false, |i| *i < value)
         })
     }
 
@@ -79,12 +67,8 @@ impl ActiveIn {
     pub fn aspect_gt(aspect_id: AspectId, value: i64) -> Self {
         Self::new(move |state| {
             state
-                .get(aspect_id)
-                .and_then(|v| match v {
-                    StateValue::Integer(i) => Some(*i),
-                    _ => None,
-                })
-                .map_or(false, |i| i > value)
+                .get_as::<i64>(aspect_id)
+                .map_or(false, |i| *i > value)
         })
     }
 
@@ -92,12 +76,8 @@ impl ActiveIn {
     pub fn aspect_in_range(aspect_id: AspectId, min: i64, max: i64) -> Self {
         Self::new(move |state| {
             state
-                .get(aspect_id)
-                .and_then(|v| match v {
-                    StateValue::Integer(i) => Some(*i),
-                    _ => None,
-                })
-                .map_or(false, |i| i >= min && i <= max)
+                .get_as::<i64>(aspect_id)
+                .map_or(false, |i| *i >= min && *i <= max)
         })
     }
 
@@ -106,12 +86,44 @@ impl ActiveIn {
         let value = value.into();
         Self::new(move |state| {
             state
-                .get(aspect_id)
-                .and_then(|v| match v {
-                    StateValue::String(s) => Some(s.as_str()),
-                    _ => None,
-                })
-                .map_or(false, |s| s == value.as_str())
+                .get_as::<String>(aspect_id)
+                .map_or(false, |s| *s == value)
+        })
+    }
+
+    /// Generic comparison for any PartialOrd type
+    pub fn aspect_lt_typed<T>(aspect_id: AspectId, value: T) -> Self
+    where
+        T: std::cmp::PartialOrd + Send + Sync + 'static,
+    {
+        Self::new(move |state| {
+            state
+                .get_as::<T>(aspect_id)
+                .map_or(false, |v| *v < value)
+        })
+    }
+
+    /// Generic comparison for any PartialOrd type
+    pub fn aspect_gt_typed<T>(aspect_id: AspectId, value: T) -> Self
+    where
+        T: std::cmp::PartialOrd + Send + Sync + 'static,
+    {
+        Self::new(move |state| {
+            state
+                .get_as::<T>(aspect_id)
+                .map_or(false, |v| *v > value)
+        })
+    }
+
+    /// Generic comparison for any PartialEq type
+    pub fn aspect_eq_typed<T>(aspect_id: AspectId, value: T) -> Self
+    where
+        T: std::cmp::PartialEq + Send + Sync + 'static,
+    {
+        Self::new(move |state| {
+            state
+                .get_as::<T>(aspect_id)
+                .map_or(false, |v| *v == value)
         })
     }
 
@@ -204,6 +216,28 @@ impl ActiveInBuilder {
         self.add(ActiveIn::aspect_string_eq(aspect_id, value))
     }
 
+    /// Generic typed comparison
+    pub fn aspect_eq_typed<T>(self, aspect_id: AspectId, value: T) -> Self
+    where
+        T: std::cmp::PartialEq + Send + Sync + 'static,
+    {
+        self.add(ActiveIn::aspect_eq_typed(aspect_id, value))
+    }
+
+    pub fn aspect_lt_typed<T>(self, aspect_id: AspectId, value: T) -> Self
+    where
+        T: std::cmp::PartialOrd + Send + Sync + 'static,
+    {
+        self.add(ActiveIn::aspect_lt_typed(aspect_id, value))
+    }
+
+    pub fn aspect_gt_typed<T>(self, aspect_id: AspectId, value: T) -> Self
+    where
+        T: std::cmp::PartialOrd + Send + Sync + 'static,
+    {
+        self.add(ActiveIn::aspect_gt_typed(aspect_id, value))
+    }
+
     pub fn build(self) -> ActiveIn {
         match self.op {
             BuilderOp::And => ActiveIn::all(self.predicates),
@@ -227,7 +261,7 @@ mod tests {
     fn test_active_in_bool() {
         let id = AspectId(0);
         let state = StateBuilder::new()
-            .set(id, StateValue::Bool(true))
+            .set_bool(id, true)
             .build();
 
         let active_in = ActiveIn::aspect_bool(id, true);
@@ -243,8 +277,8 @@ mod tests {
         let id2 = AspectId(1);
 
         let state = StateBuilder::new()
-            .set(id1, StateValue::Bool(true))
-            .set(id2, StateValue::Integer(5))
+            .set_bool(id1, true)
+            .set_int(id2, 5)
             .build();
 
         let active_in = ActiveIn::aspect_bool(id1, true)
@@ -262,8 +296,8 @@ mod tests {
         let id2 = AspectId(1);
 
         let state = StateBuilder::new()
-            .set(id1, StateValue::Bool(true))
-            .set(id2, StateValue::Integer(5))
+            .set_bool(id1, true)
+            .set_int(id2, 5)
             .build();
 
         let active_in = ActiveInBuilder::with_all()
@@ -271,6 +305,23 @@ mod tests {
             .aspect_lt(id2, 10)
             .build();
 
+        assert!(active_in.evaluate(&state));
+    }
+
+    #[test]
+    fn test_active_in_typed() {
+        let id = AspectId(0);
+        let state = StateBuilder::new()
+            .set_typed(id, 42i32)
+            .build();
+
+        let active_in = ActiveIn::aspect_eq_typed(id, 42i32);
+        assert!(active_in.evaluate(&state));
+
+        let active_in = ActiveIn::aspect_lt_typed(id, 50i32);
+        assert!(active_in.evaluate(&state));
+
+        let active_in = ActiveIn::aspect_gt_typed(id, 30i32);
         assert!(active_in.evaluate(&state));
     }
 }

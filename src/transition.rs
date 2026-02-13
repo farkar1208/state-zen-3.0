@@ -160,7 +160,7 @@ impl Default for TransitionBuilder {
 mod tests {
     use super::*;
     use crate::active_in::ActiveIn;
-    use crate::aspect::{AspectId, StateBuilder, StateValue};
+    use crate::aspect::{AspectId, StateBuilder};
     use crate::update::Update;
 
     #[test]
@@ -168,7 +168,7 @@ mod tests {
         let mode_id = AspectId(0);
         let active_in = ActiveIn::aspect_bool(mode_id, true);
         let event = EventId::new("start");
-        let update = Update::set(mode_id, StateValue::Bool(false));
+        let update = Update::set_bool(mode_id, false);
 
         let transition = Transition::new("test_transition", active_in, event, update);
 
@@ -187,11 +187,11 @@ mod tests {
         let transition = Transition::new("test_transition", active_in, event, update);
 
         let state_active = StateBuilder::new()
-            .set(mode_id, StateValue::Bool(true))
+            .set_bool(mode_id, true)
             .build();
 
         let state_inactive = StateBuilder::new()
-            .set(mode_id, StateValue::Bool(false))
+            .set_bool(mode_id, false)
             .build();
 
         assert!(transition.is_active(&state_active));
@@ -203,17 +203,17 @@ mod tests {
         let mode_id = AspectId(0);
         let active_in = ActiveIn::always();
         let event = EventId::new("start");
-        let update = Update::set(mode_id, StateValue::Bool(false));
+        let update = Update::set_bool(mode_id, false);
 
         let transition = Transition::new("test_transition", active_in, event, update);
 
         let state = StateBuilder::new()
-            .set(mode_id, StateValue::Bool(true))
+            .set_bool(mode_id, true)
             .build();
 
         let new_state = transition.apply(state);
 
-        assert_eq!(new_state.get(mode_id), Some(&StateValue::Bool(false)));
+        assert_eq!(new_state.get_as::<bool>(mode_id), Some(&false));
     }
 
     #[test]
@@ -221,7 +221,7 @@ mod tests {
         let mode_id = AspectId(0);
         let active_in = ActiveIn::always();
         let event = EventId::new("start");
-        let update = Update::set(mode_id, StateValue::Bool(false));
+        let update = Update::set_bool(mode_id, false);
 
         let transition = TransitionBuilder::new()
             .id("test_transition")

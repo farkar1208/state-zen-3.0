@@ -1,26 +1,33 @@
-use crate::aspect::{AspectId, State, StateValue};
+use crate::aspect::{AspectId, State};
+use std::any::Any;
 use std::sync::Arc;
 
 /// Represents how state evolves in response to events
 ///
 /// An Update is a pure function that receives current state and returns new state.
 /// It must be side-effect free; all side effects should be in on_tran handlers.
-#[derive(Clone)]
 pub struct Update {
-    operation: UpdateOp,
+    operation: Arc<UpdateOp>,
+}
+
+impl Clone for Update {
+    fn clone(&self) -> Self {
+        Update {
+            operation: Arc::clone(&self.operation),
+        }
+    }
 }
 
 /// Internal representation of update operations
-#[derive(Clone)]
 enum UpdateOp {
     Noop,
-    Set(AspectId, StateValue),
-    Modify(AspectId, Arc<dyn Fn(StateValue) -> StateValue + Send + Sync>),
+    Set(AspectId, Box<dyn Any + Send + Sync>),
+    Modify(AspectId, Arc<dyn Fn(Box<dyn Any + Send + Sync>) -> Box<dyn Any + Send + Sync> + Send + Sync>),
     Compose(Vec<Update>),
     Conditional {
         predicate: Arc<dyn Fn(&State) -> bool + Send + Sync>,
-        then_update: Box<Update>,
-        else_update: Option<Box<Update>>,
+        then_update: Update,
+        else_update: Option<Update>,
     },
 }
 
@@ -28,76 +35,108 @@ impl Update {
     /// Create a no-op update (state remains unchanged)
     pub fn noop() -> Self {
         Self {
-            operation: UpdateOp::Noop,
+            operation: Arc::new(UpdateOp::Noop),
         }
     }
 
-    /// Set an aspect to a specific value
-    pub fn set(aspect_id: AspectId, value: StateValue) -> Self {
+    /// Set an aspect to a specific value (type-erased)
+    pub fn set(aspect_id: AspectId, value: Box<dyn Any + Send + Sync>) -> Self {
         Self {
-            operation: UpdateOp::Set(aspect_id, value),
+            operation: Arc::new(UpdateOp::Set(aspect_id, value)),
         }
+    }
+
+    /// Set a typed value
+    pub fn set_typed<T: Any + Send + Sync>(aspect_id: AspectId, value: T) -> Self {
+        Self::set(aspect_id, Box::new(value))
     }
 
     /// Modify an aspect's value using a transformation function
     pub fn modify<F>(aspect_id: AspectId, f: F) -> Self
     where
-        F: Fn(StateValue) -> StateValue + Send + Sync + 'static,
+        F: Fn(Box<dyn Any + Send + Sync>) -> Box<dyn Any + Send + Sync> + Send + Sync + 'static,
     {
         Self {
-            operation: UpdateOp::Modify(aspect_id, Arc::new(f)),
+            operation: Arc::new(UpdateOp::Modify(aspect_id, Arc::new(f))),
         }
     }
 
     /// Set a boolean aspect
     pub fn set_bool(aspect_id: AspectId, value: bool) -> Self {
-        Self::set(aspect_id, StateValue::Bool(value))
+        Self::set_typed(aspect_id, value)
     }
 
     /// Set an integer aspect
     pub fn set_int(aspect_id: AspectId, value: i64) -> Self {
-        Self::set(aspect_id, StateValue::Integer(value))
+        Self::set_typed(aspect_id, value)
     }
 
     /// Set a float aspect
     pub fn set_float(aspect_id: AspectId, value: f64) -> Self {
-        Self::set(aspect_id, StateValue::Float(value))
+        Self::set_typed(aspect_id, value)
     }
 
     /// Set a string aspect
     pub fn set_string(aspect_id: AspectId, value: impl Into<String>) -> Self {
-        Self::set(aspect_id, StateValue::String(value.into()))
+        Self::set_typed(aspect_id, value.into())
     }
 
     /// Increment an integer aspect
     pub fn increment(aspect_id: AspectId) -> Self {
-        Self::modify(aspect_id, |v| match v {
-            StateValue::Integer(i) => StateValue::Integer(i + 1),
-            _ => v,
+        Self::modify(aspect_id, |boxed| {
+            if let Some(i) = boxed.downcast_ref::<i64>() {
+                Box::new(*i + 1)
+            } else {
+                boxed
+            }
         })
     }
 
     /// Decrement an integer aspect
     pub fn decrement(aspect_id: AspectId) -> Self {
-        Self::modify(aspect_id, |v| match v {
-            StateValue::Integer(i) => StateValue::Integer(i - 1),
-            _ => v,
+        Self::modify(aspect_id, |boxed| {
+            if let Some(i) = boxed.downcast_ref::<i64>() {
+                Box::new(*i - 1)
+            } else {
+                boxed
+            }
         })
     }
 
     /// Add a delta to an integer aspect
     pub fn add(aspect_id: AspectId, delta: i64) -> Self {
-        Self::modify(aspect_id, move |v| match v {
-            StateValue::Integer(i) => StateValue::Integer(i + delta),
-            _ => v,
+        Self::modify(aspect_id, move |boxed| {
+            if let Some(i) = boxed.downcast_ref::<i64>() {
+                Box::new(*i + delta)
+            } else {
+                boxed
+            }
         })
     }
 
     /// Toggle a boolean aspect
     pub fn toggle(aspect_id: AspectId) -> Self {
-        Self::modify(aspect_id, |v| match v {
-            StateValue::Bool(b) => StateValue::Bool(!b),
-            _ => v,
+        Self::modify(aspect_id, |boxed| {
+            if let Some(b) = boxed.downcast_ref::<bool>() {
+                Box::new(!*b)
+            } else {
+                boxed
+            }
+        })
+    }
+
+    /// Generic modify for any type
+    pub fn modify_typed<T, F>(aspect_id: AspectId, f: F) -> Self
+    where
+        T: Any + Send + Sync + Clone,
+        F: Fn(T) -> T + Send + Sync + 'static,
+    {
+        Self::modify(aspect_id, move |boxed| {
+            if let Some(value) = boxed.downcast_ref::<T>() {
+                Box::new(f(value.clone()))
+            } else {
+                boxed
+            }
         })
     }
 
@@ -109,7 +148,7 @@ impl Update {
             updates.into_iter().next().unwrap()
         } else {
             Self {
-                operation: UpdateOp::Compose(updates),
+                operation: Arc::new(UpdateOp::Compose(updates)),
             }
         }
     }
@@ -120,11 +159,11 @@ impl Update {
         F: Fn(&State) -> bool + Send + Sync + 'static,
     {
         Self {
-            operation: UpdateOp::Conditional {
+            operation: Arc::new(UpdateOp::Conditional {
                 predicate: Arc::new(predicate),
-                then_update: Box::new(then_update),
+                then_update,
                 else_update: None,
-            },
+            }),
         }
     }
 
@@ -138,24 +177,56 @@ impl Update {
         F: Fn(&State) -> bool + Send + Sync + 'static,
     {
         Self {
-            operation: UpdateOp::Conditional {
+            operation: Arc::new(UpdateOp::Conditional {
                 predicate: Arc::new(predicate),
-                then_update: Box::new(then_update),
-                else_update: Some(Box::new(else_update)),
-            },
+                then_update,
+                else_update: Some(else_update),
+            }),
         }
     }
 
     /// Apply this update to a state, returning a new state
     pub fn apply(&self, state: State) -> State {
-        match &self.operation {
+        match &*self.operation {
             UpdateOp::Noop => state,
-            UpdateOp::Set(aspect_id, value) => state.set(*aspect_id, value.clone()),
-            UpdateOp::Modify(aspect_id, f) => {
-                if let Some(current) = state.get(*aspect_id) {
-                    state.set(*aspect_id, f(current.clone()))
+            UpdateOp::Set(aspect_id, value) => {
+                // Clone common types
+                if let Some(b) = value.downcast_ref::<bool>() {
+                    state.set_typed(*aspect_id, *b)
+                } else if let Some(i) = value.downcast_ref::<i64>() {
+                    state.set_typed(*aspect_id, *i)
+                } else if let Some(f) = value.downcast_ref::<f64>() {
+                    state.set_typed(*aspect_id, *f)
+                } else if let Some(s) = value.downcast_ref::<String>() {
+                    state.set_typed(*aspect_id, s.clone())
+                } else if let Some(i) = value.downcast_ref::<i32>() {
+                    state.set_typed(*aspect_id, *i)
                 } else {
-                    state
+                    state // Can't clone other types
+                }
+            }
+            UpdateOp::Modify(aspect_id, f) => {
+                // Clone state first to avoid borrow issues
+                let state_cloned = state.clone();
+                if let Some(v) = state_cloned.get(*aspect_id) {
+                    // Create a boxed clone of the Any reference
+                    let boxed_clone: Box<dyn Any + Send + Sync> = if let Some(b) = v.downcast_ref::<bool>() {
+                        Box::new(*b)
+                    } else if let Some(i) = v.downcast_ref::<i64>() {
+                        Box::new(*i)
+                    } else if let Some(f) = v.downcast_ref::<f64>() {
+                        Box::new(*f)
+                    } else if let Some(s) = v.downcast_ref::<String>() {
+                        Box::new(s.clone())
+                    } else if let Some(i) = v.downcast_ref::<i32>() {
+                        Box::new(*i)
+                    } else {
+                        // For other types, we can't clone, so return original
+                        return state_cloned;
+                    };
+                    state_cloned.set(*aspect_id, f(boxed_clone))
+                } else {
+                    state_cloned
                 }
             }
             UpdateOp::Compose(updates) => {
@@ -192,7 +263,7 @@ impl UpdateBuilder {
         }
     }
 
-    pub fn set(mut self, aspect_id: AspectId, value: StateValue) -> Self {
+    pub fn set(mut self, aspect_id: AspectId, value: Box<dyn Any + Send + Sync>) -> Self {
         self.operations.push(Update::set(aspect_id, value));
         self
     }
@@ -214,6 +285,11 @@ impl UpdateBuilder {
 
     pub fn set_string(mut self, aspect_id: AspectId, value: impl Into<String>) -> Self {
         self.operations.push(Update::set_string(aspect_id, value));
+        self
+    }
+
+    pub fn set_typed<T: Any + Send + Sync>(mut self, aspect_id: AspectId, value: T) -> Self {
+        self.operations.push(Update::set_typed(aspect_id, value));
         self
     }
 
@@ -239,9 +315,18 @@ impl UpdateBuilder {
 
     pub fn modify<F>(mut self, aspect_id: AspectId, f: F) -> Self
     where
-        F: Fn(StateValue) -> StateValue + Send + Sync + 'static,
+        F: Fn(Box<dyn Any + Send + Sync>) -> Box<dyn Any + Send + Sync> + Send + Sync + 'static,
     {
         self.operations.push(Update::modify(aspect_id, f));
+        self
+    }
+
+    pub fn modify_typed<T, F>(mut self, aspect_id: AspectId, f: F) -> Self
+    where
+        T: Any + Send + Sync + Clone,
+        F: Fn(T) -> T + Send + Sync + 'static,
+    {
+        self.operations.push(Update::modify_typed(aspect_id, f));
         self
     }
 
@@ -265,7 +350,7 @@ mod tests {
     fn test_update_noop() {
         let id = AspectId(0);
         let state = StateBuilder::new()
-            .set(id, StateValue::Bool(true))
+            .set_bool(id, true)
             .build();
 
         let new_state = Update::noop().apply(state.clone());
@@ -277,36 +362,36 @@ mod tests {
     fn test_update_set() {
         let id = AspectId(0);
         let state = StateBuilder::new()
-            .set(id, StateValue::Bool(true))
+            .set_bool(id, true)
             .build();
 
         let new_state = Update::set_bool(id, false).apply(state);
 
-        assert_eq!(new_state.get(id), Some(&StateValue::Bool(false)));
+        assert_eq!(new_state.get_as::<bool>(id), Some(&false));
     }
 
     #[test]
     fn test_update_increment() {
         let id = AspectId(0);
         let state = StateBuilder::new()
-            .set(id, StateValue::Integer(5))
+            .set_int(id, 5)
             .build();
 
         let new_state = Update::increment(id).apply(state);
 
-        assert_eq!(new_state.get(id), Some(&StateValue::Integer(6)));
+        assert_eq!(new_state.get_as::<i64>(id), Some(&6));
     }
 
     #[test]
     fn test_update_toggle() {
         let id = AspectId(0);
         let state = StateBuilder::new()
-            .set(id, StateValue::Bool(true))
+            .set_bool(id, true)
             .build();
 
         let new_state = Update::toggle(id).apply(state);
 
-        assert_eq!(new_state.get(id), Some(&StateValue::Bool(false)));
+        assert_eq!(new_state.get_as::<bool>(id), Some(&false));
     }
 
     #[test]
@@ -315,8 +400,8 @@ mod tests {
         let id2 = AspectId(1);
 
         let state = StateBuilder::new()
-            .set(id1, StateValue::Bool(false))
-            .set(id2, StateValue::Integer(5))
+            .set_bool(id1, false)
+            .set_int(id2, 5)
             .build();
 
         let new_state = Update::compose(vec![
@@ -325,28 +410,25 @@ mod tests {
         ])
         .apply(state);
 
-        assert_eq!(new_state.get(id1), Some(&StateValue::Bool(true)));
-        assert_eq!(new_state.get(id2), Some(&StateValue::Integer(6)));
+        assert_eq!(new_state.get_as::<bool>(id1), Some(&true));
+        assert_eq!(new_state.get_as::<i64>(id2), Some(&6));
     }
 
     #[test]
     fn test_update_conditional() {
         let id = AspectId(0);
         let state = StateBuilder::new()
-            .set(id, StateValue::Integer(5))
+            .set_int(id, 5)
             .build();
 
         let update = Update::conditional(
-            move |s| s.get(id).and_then(|v| match v {
-                StateValue::Integer(i) => Some(*i),
-                _ => None,
-            }).map_or(false, |i| i < 10),
+            move |s| s.get_as::<i64>(id).map_or(false, |&i| i < 10),
             Update::increment(id),
         );
 
         let new_state = update.apply(state);
 
-        assert_eq!(new_state.get(id), Some(&StateValue::Integer(6)));
+        assert_eq!(new_state.get_as::<i64>(id), Some(&6));
     }
 
     #[test]
@@ -355,8 +437,8 @@ mod tests {
         let id2 = AspectId(1);
 
         let state = StateBuilder::new()
-            .set(id1, StateValue::Bool(false))
-            .set(id2, StateValue::Integer(5))
+            .set_bool(id1, false)
+            .set_int(id2, 5)
             .build();
 
         let update = UpdateBuilder::new()
@@ -366,7 +448,20 @@ mod tests {
 
         let new_state = update.apply(state);
 
-        assert_eq!(new_state.get(id1), Some(&StateValue::Bool(true)));
-        assert_eq!(new_state.get(id2), Some(&StateValue::Integer(6)));
+        assert_eq!(new_state.get_as::<bool>(id1), Some(&true));
+        assert_eq!(new_state.get_as::<i64>(id2), Some(&6));
+    }
+
+    #[test]
+    fn test_update_typed() {
+        let id = AspectId(0);
+        let state = StateBuilder::new()
+            .set_typed(id, 42i32)
+            .build();
+
+        let update = Update::modify_typed(id, |v: i32| v + 10);
+        let new_state = update.apply(state);
+
+        assert_eq!(new_state.get_as::<i32>(id), Some(&52));
     }
 }

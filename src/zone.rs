@@ -144,7 +144,7 @@ impl Default for ZoneBuilder {
 mod tests {
     use super::*;
     use crate::active_in::ActiveIn;
-    use crate::aspect::{AspectId, StateBuilder, StateValue};
+    use crate::aspect::{AspectId, StateBuilder};
 
     #[test]
     fn test_zone_creation() {
@@ -179,11 +179,11 @@ mod tests {
         let zone = Zone::new("test_zone", active_in);
 
         let state_active = StateBuilder::new()
-            .set(id, StateValue::Bool(true))
+            .set_bool(id, true)
             .build();
 
         let state_inactive = StateBuilder::new()
-            .set(id, StateValue::Bool(false))
+            .set_bool(id, false)
             .build();
 
         assert!(zone.is_active(&state_active));
