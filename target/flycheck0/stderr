@@ -1,13 +1,33 @@
-   0.061393900s  INFO prepare_target{force=false package_id=state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0) target="state_zen"}: cargo::core::compiler::fingerprint: stale: changed "C:\\Users\\AS\\Documents\\state-zen 3.0\\src\\lib.rs"
-   0.061425800s  INFO prepare_target{force=false package_id=state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0) target="state_zen"}: cargo::core::compiler::fingerprint:           (vs) "C:\\Users\\AS\\Documents\\state-zen 3.0\\target\\debug\\.fingerprint\\state-zen-ec1eedac2ef220a9\\dep-test-lib-state_zen"
-   0.061431900s  INFO prepare_target{force=false package_id=state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0) target="state_zen"}: cargo::core::compiler::fingerprint:                FileTime { seconds: 13414986250, nanos: 6267400 } < FileTime { seconds: 13415037090, nanos: 213651000 }
-   0.070549000s  INFO prepare_target{force=false package_id=state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0) target="state_zen"}: cargo::core::compiler::fingerprint: fingerprint dirty for state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("state_zen", ["lib"], "C:\\Users\\AS\\Documents\\state-zen 3.0\\src\\lib.rs", Edition2021) }
-   0.071637900s  INFO prepare_target{force=false package_id=state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0) target="state_zen"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleItem(ChangedFile { reference: "C:\\Users\\AS\\Documents\\state-zen 3.0\\target\\debug\\.fingerprint\\state-zen-ec1eedac2ef220a9\\dep-test-lib-state_zen", reference_mtime: FileTime { seconds: 13414986250, nanos: 6267400 }, stale: "C:\\Users\\AS\\Documents\\state-zen 3.0\\src\\lib.rs", stale_mtime: FileTime { seconds: 13415037090, nanos: 213651000 } }))
-   0.072563400s  INFO prepare_target{force=false package_id=state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0) target="basic_state_machine"}: cargo::core::compiler::fingerprint: dependency on `state_zen` is newer than we are 13415037180.740906700s > 13414986126.687019100s "C:\\Users\\AS\\Documents\\state-zen 3.0"
-   0.079282300s  INFO prepare_target{force=false package_id=state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0) target="basic_state_machine"}: cargo::core::compiler::fingerprint: fingerprint dirty for state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0)/Check { test: false }/TargetInner { kind: "example", name: "basic_state_machine", tested: false, benched: false, ..: with_path("C:\\Users\\AS\\Documents\\state-zen 3.0\\examples\\basic_state_machine.rs", Edition2021) }
-   0.079320400s  INFO prepare_target{force=false package_id=state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0) target="basic_state_machine"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDependency { name: "state_zen", dep_mtime: FileTime { seconds: 13415037180, nanos: 740906700 }, max_mtime: FileTime { seconds: 13414986126, nanos: 687019100 } })
-   0.080789500s  INFO prepare_target{force=false package_id=state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0) target="usage_guide"}: cargo::core::compiler::fingerprint: fingerprint error for state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0)/Check { test: false }/TargetInner { kind: "example", name: "usage_guide", tested: false, benched: false, ..: with_path("C:\\Users\\AS\\Documents\\state-zen 3.0\\examples\\usage_guide.rs", Edition2021) }
-   0.080808900s  INFO prepare_target{force=false package_id=state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0) target="usage_guide"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\AS\Documents\state-zen 3.0\target\debug\.fingerprint\state-zen-c5aef926dd4fca5c\example-usage_guide`
+   0.015712700s  INFO prepare_target{force=false package_id=state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0) target="state_zen"}: cargo::core::compiler::fingerprint: fingerprint error for state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("state_zen", ["lib"], "C:\\Users\\AS\\Documents\\state-zen 3.0\\src\\lib.rs", Edition2021) }
+   0.016334500s  INFO prepare_target{force=false package_id=state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0) target="state_zen"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\AS\Documents\state-zen 3.0\target\debug\.fingerprint\state-zen-ec1eedac2ef220a9\test-lib-state_zen`
+
+Caused by:
+    系统找不到指定的文件。 (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_path
+   6: git_filter_source_path
+   7: git_filter_source_path
+   8: git_filter_source_path
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_filter_source_repo
+  12: git_filter_source_repo
+  13: git_filter_source_repo
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+   0.030049900s  INFO prepare_target{force=false package_id=state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0) target="usage_guide"}: cargo::core::compiler::fingerprint: fingerprint error for state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0)/Check { test: false }/TargetInner { kind: "example", name: "usage_guide", tested: false, benched: false, ..: with_path("C:\\Users\\AS\\Documents\\state-zen 3.0\\examples\\usage_guide.rs", Edition2021) }
+   0.030073200s  INFO prepare_target{force=false package_id=state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0) target="usage_guide"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\AS\Documents\state-zen 3.0\target\debug\.fingerprint\state-zen-c5aef926dd4fca5c\example-usage_guide`
 
 Caused by:
     系统找不到指定的文件。 (os error 2)
@@ -35,4 +55,4 @@ Stack backtrace:
   19: BaseThreadInitThunk
   20: RtlUserThreadStart
     Checking state-zen v0.1.0 (C:\Users\AS\Documents\state-zen 3.0)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.25s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.37s
