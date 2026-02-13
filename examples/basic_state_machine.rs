@@ -1,34 +1,34 @@
-use state_zen::{AspectId, StateAspect, StateValue, Zone, Transition, StateMachineRuntime};
+use state_zen::{AspectId, StateAspect, Zone, Transition, StateMachineRuntime};
 use state_zen::transition::EventId;
-use state_zen::blueprint::BlueprintBuilder;
 use state_zen::active_in::ActiveIn;
 use state_zen::update::Update;
+use state_zen::StateMachineBlueprint;
 
 fn main() {
     // Define state aspects (dimensions of the state vector)
-    let mode_aspect = StateAspect::new(
+    let mode_aspect: StateAspect<String> = StateAspect::new(
         AspectId(0),
         "mode",
-        StateValue::String("idle".to_string()),
+        "idle".to_string(),
     );
 
-    let battery_aspect = StateAspect::new(
+    let battery_aspect: StateAspect<i64> = StateAspect::new(
         AspectId(1),
         "battery",
-        StateValue::Integer(100),
+        100,
     )
-    .with_range(StateValue::Integer(0), StateValue::Integer(100));
+    .with_range(0, 100);
 
-    let is_charging_aspect = StateAspect::new(
+    let is_charging_aspect: StateAspect<bool> = StateAspect::new(
         AspectId(2),
         "is_charging",
-        StateValue::Bool(false),
+        false,
     );
 
     // Create a zone that activates when charging
     let charging_zone = Zone::new(
         "charging_zone",
-        ActiveIn::aspect_bool(AspectId(2), true),
+        ActiveIn::aspect_eq_typed(AspectId(2), true),
     )
     .with_on_enter(|| {
         println!("🔋 Started charging - entering charging zone");
@@ -40,7 +40,7 @@ fn main() {
     // Create a low battery zone
     let low_battery_zone = Zone::new(
         "low_battery_zone",
-        ActiveIn::aspect_lt(AspectId(1), 20),
+        ActiveIn::aspect_lt_typed(AspectId(1), 20),
     )
     .with_on_enter(|| {
         println!("⚠️  Low battery warning!");
@@ -52,7 +52,7 @@ fn main() {
     // Create a running zone
     let running_zone = Zone::new(
         "running_zone",
-        ActiveIn::aspect_string_eq(AspectId(0), "running"),
+        ActiveIn::aspect_eq_typed(AspectId(0), "running".to_string()),
     )
     .with_on_enter(|| {
         println!("▶️  System started");
@@ -64,9 +64,9 @@ fn main() {
     // Create transitions
     let start_transition = Transition::new(
         "start",
-        ActiveIn::aspect_string_eq(AspectId(0), "idle"),
+        ActiveIn::aspect_eq_typed(AspectId(0), "idle".to_string()),
         EventId::new("start_button"),
-        Update::set_string(AspectId(0), "running"),
+        Update::set(AspectId(0), Box::new("running".to_string())),
     )
     .with_on_tran(|| {
         println!("🎯 Start button pressed - transitioning to running");
@@ -74,9 +74,9 @@ fn main() {
 
     let stop_transition = Transition::new(
         "stop",
-        ActiveIn::aspect_string_eq(AspectId(0), "running"),
+        ActiveIn::aspect_eq_typed(AspectId(0), "running".to_string()),
         EventId::new("stop_button"),
-        Update::set_string(AspectId(0), "idle"),
+        Update::set(AspectId(0), Box::new("idle".to_string())),
     )
     .with_on_tran(|| {
         println!("⏹️  Stop button pressed - transitioning to idle");
@@ -86,7 +86,7 @@ fn main() {
         "charge",
         ActiveIn::always(),
         EventId::new("charge"),
-        Update::set_bool(AspectId(2), true),
+        Update::set(AspectId(2), Box::new(true)),
     )
     .with_on_tran(|| {
         println!("🔌 Charger connected");
@@ -96,7 +96,7 @@ fn main() {
         "uncharge",
         ActiveIn::always(),
         EventId::new("uncharge"),
-        Update::set_bool(AspectId(2), false),
+        Update::set(AspectId(2), Box::new(false)),
     )
     .with_on_tran(|| {
         println!("🔌 Charger disconnected");
@@ -104,42 +104,39 @@ fn main() {
 
     let consume_battery_transition = Transition::new(
         "consume_battery",
-        ActiveIn::aspect_string_eq(AspectId(0), "running"),
+        ActiveIn::aspect_eq_typed(AspectId(0), "running".to_string()),
         EventId::new("tick"),
         Update::compose(vec![
             Update::conditional_else(
                 // Charging and battery < 100: increase, otherwise decrease
                 |s| s.get_as::<bool>(AspectId(2)).map_or(false, |&v| v)
                      && s.get_as::<i64>(AspectId(1)).map_or(false, |&v| v < 100),
-                Update::increment(AspectId(1)), // charging: increase battery
-                Update::decrement(AspectId(1)), // running: decrease battery
+                Update::modify_typed::<i64, _>(AspectId(1), |v| v + 1), // charging: increase battery
+                Update::modify_typed::<i64, _>(AspectId(1), |v| v - 1), // running: decrease battery
             ),
             Update::conditional(
                 |s| s.get_as::<i64>(AspectId(1)).map_or(false, |&v| v <= 0),
                 Update::compose(vec![
-                    Update::set_string(AspectId(0), "idle"),
-                    Update::set_int(AspectId(1), 0),
+                    Update::set(AspectId(0), Box::new("idle".to_string())),
+                    Update::set(AspectId(1), Box::new(0i64)),
                 ]),
             ),
         ]),
     );
 
     // Build the state machine blueprint
-    let blueprint = BlueprintBuilder::new()
-        .id("device_controller")
-        .aspect(mode_aspect)
-        .aspect(battery_aspect)
-        .aspect(is_charging_aspect)
-        .zone(charging_zone)
-        .zone(low_battery_zone)
-        .zone(running_zone)
-        .transition(start_transition)
-        .transition(stop_transition)
-        .transition(charge_transition)
-        .transition(uncharge_transition)
-        .transition(consume_battery_transition)
-        .build()
-        .unwrap();
+    let mut blueprint = StateMachineBlueprint::new("device_controller");
+    blueprint.add_aspect(mode_aspect);
+    blueprint.add_aspect(battery_aspect);
+    blueprint.add_aspect(is_charging_aspect);
+    blueprint.add_zone(charging_zone);
+    blueprint.add_zone(low_battery_zone);
+    blueprint.add_zone(running_zone);
+    blueprint.add_transition(start_transition);
+    blueprint.add_transition(stop_transition);
+    blueprint.add_transition(charge_transition);
+    blueprint.add_transition(uncharge_transition);
+    blueprint.add_transition(consume_battery_transition);
 
     // Print blueprint statistics
     let stats = blueprint.stats();

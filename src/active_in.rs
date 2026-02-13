@@ -255,7 +255,7 @@ impl Default for ActiveInBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::aspect::{StateBuilder, StateValue};
+    use crate::aspect::StateBuilder;
 
     #[test]
     fn test_active_in_bool() {

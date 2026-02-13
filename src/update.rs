@@ -344,7 +344,7 @@ impl Default for UpdateBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::aspect::{StateBuilder, StateValue};
+    use crate::aspect::StateBuilder;
 
     #[test]
     fn test_update_noop() {
