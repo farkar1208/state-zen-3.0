@@ -1,4 +1,4 @@
-use crate::active_in::ActiveIn;
+use crate::active_in::{ActiveIn, ActiveInBlueprint};
 use std::fmt;
 
 /// Represents a state behavior area with lifecycle semantics
@@ -29,11 +29,21 @@ impl fmt::Debug for Zone {
 pub type ZoneHandler = Box<dyn Fn() + Send + Sync>;
 
 impl Zone {
-    /// Create a new Zone
+    /// Create a new Zone with runtime ActiveIn
     pub fn new(id: impl Into<String>, active_in: ActiveIn) -> Self {
         Self {
             id: id.into(),
             active_in,
+            on_enter: None,
+            on_exit: None,
+        }
+    }
+
+    /// Create a new Zone from a blueprint ActiveInBlueprint
+    pub fn from_blueprint(id: impl Into<String>, active_in: ActiveInBlueprint) -> Self {
+        Self {
+            id: id.into(),
+            active_in: ActiveIn::from_blueprint(active_in),
             on_enter: None,
             on_exit: None,
         }

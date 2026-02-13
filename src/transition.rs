@@ -1,4 +1,4 @@
-use crate::active_in::ActiveIn;
+use crate::active_in::{ActiveIn, ActiveInBlueprint};
 use crate::update::Update;
 use crate::aspect::State;
 use std::fmt;
@@ -43,11 +43,27 @@ impl EventId {
 pub type TransitionHandler = Box<dyn Fn() + Send + Sync>;
 
 impl Transition {
-    /// Create a new Transition
+    /// Create a new Transition with runtime ActiveIn
     pub fn new(id: impl Into<String>, active_in: ActiveIn, event: EventId, update: Update) -> Self {
         Self {
             id: id.into(),
             active_in,
+            event,
+            update,
+            on_tran: None,
+        }
+    }
+
+    /// Create a new Transition from a blueprint ActiveInBlueprint
+    pub fn from_blueprint(
+        id: impl Into<String>,
+        active_in: ActiveInBlueprint,
+        event: EventId,
+        update: Update,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            active_in: ActiveIn::from_blueprint(active_in),
             event,
             update,
             on_tran: None,
