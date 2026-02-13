@@ -1,6 +1,6 @@
 use crate::aspect::{AspectId, State, StateAspect};
-use crate::zone::Zone;
-use crate::transition::{EventId, Transition};
+use crate::zone::{Zone, ZoneId};
+use crate::transition::{EventId, Transition, TransitionId};
 use std::any::{Any, TypeId};
 use std::collections::{HashMap, HashSet};
 
@@ -247,8 +247,8 @@ pub enum ValidationResult {
 /// Validation error types
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidationError {
-    DuplicateZoneId(String),
-    DuplicateTransitionId(String),
+    DuplicateZoneId(ZoneId),
+    DuplicateTransitionId(TransitionId),
     UndefinedAspect(AspectId),
 }
 
@@ -256,10 +256,10 @@ impl std::fmt::Display for ValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ValidationError::DuplicateZoneId(id) => {
-                write!(f, "Duplicate zone ID: {}", id)
+                write!(f, "Duplicate zone ID: {:?}", id)
             }
             ValidationError::DuplicateTransitionId(id) => {
-                write!(f, "Duplicate transition ID: {}", id)
+                write!(f, "Duplicate transition ID: {:?}", id)
             }
             ValidationError::UndefinedAspect(id) => {
                 write!(f, "Undefined aspect referenced: {:?}", id)
@@ -439,7 +439,7 @@ mod tests {
     fn test_blueprint_add_zone() {
         let mut blueprint = StateMachineBlueprint::new("test_machine");
 
-        let zone = Zone::new("test_zone", ActiveIn::always());
+        let zone = Zone::new(ZoneId(0), "test_zone", ActiveIn::always());
 
         blueprint.add_zone(zone);
 
@@ -451,6 +451,7 @@ mod tests {
         let mut blueprint = StateMachineBlueprint::new("test_machine");
 
         let transition = Transition::new(
+            TransitionId(0),
             "test_transition",
             ActiveIn::always(),
             EventId::new("start"),
@@ -486,10 +487,11 @@ mod tests {
         let aspect: StateAspect<String> = StateAspect::new(AspectId(0), "mode", "idle".to_string());
         blueprint.add_aspect(aspect);
 
-        let zone = Zone::new("test_zone", ActiveIn::always());
+        let zone = Zone::new(ZoneId(0), "test_zone", ActiveIn::always());
         blueprint.add_zone(zone);
 
         let transition = Transition::new(
+            TransitionId(0),
             "test_transition",
             ActiveIn::always(),
             EventId::new("start"),
@@ -508,8 +510,9 @@ mod tests {
     #[test]
     fn test_blueprint_builder() {
         let aspect: StateAspect<String> = StateAspect::new(AspectId(0), "mode", "idle".to_string());
-        let zone = Zone::new("test_zone", ActiveIn::always());
+        let zone = Zone::new(ZoneId(0), "test_zone", ActiveIn::always());
         let transition = Transition::new(
+            TransitionId(0),
             "test_transition",
             ActiveIn::always(),
             EventId::new("start"),

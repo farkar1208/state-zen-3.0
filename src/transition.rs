@@ -3,12 +3,80 @@ use crate::update::{Update, UpdateBlueprint};
 use crate::aspect::State;
 use std::fmt;
 
+// ============================================================================
+// ID TYPES
+// ============================================================================
+
+/// Unique identifier for a Transition
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TransitionId(pub usize);
+
+/// Unique identifier for an event type
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct EventId(pub String);
+
+impl EventId {
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+}
+
+// ============================================================================
+// BLUEPRINT LAYER - TransitionBlueprint (without side effects)
+// ============================================================================
+
+/// Blueprint for a Transition (declaration layer, no side effect handlers)
+///
+/// A TransitionBlueprint describes how the system responds to events and evolves state.
+/// It does NOT include side effect handlers (on_tran).
+#[derive(Debug, Clone)]
+pub struct TransitionBlueprint {
+    pub id: TransitionId,
+    pub name: String,
+    /// When this transition should listen for events
+    pub active_in: ActiveInBlueprint,
+    /// The event type to listen for
+    pub event: EventId,
+    /// How to compute the new state (pure function)
+    pub update: UpdateBlueprint,
+}
+
+impl TransitionBlueprint {
+    /// Create a new TransitionBlueprint
+    pub fn new(
+        id: TransitionId,
+        name: impl Into<String>,
+        active_in: ActiveInBlueprint,
+        event: EventId,
+        update: UpdateBlueprint,
+    ) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            active_in,
+            event,
+            update,
+        }
+    }
+
+    /// Count the total number of AST nodes in this transition blueprint
+    pub fn node_count(&self) -> usize {
+        1 + self.active_in.node_count() + self.update.node_count()
+            // TransitionBlueprint + ActiveInBlueprint + UpdateBlueprint
+    }
+}
+
+// ============================================================================
+// RUNTIME LAYER - Transition (with side effect handlers)
+// ============================================================================
+
 /// Represents a state transition triggered by an event
 ///
 /// A Transition describes how the system responds to events and evolves state.
 /// It only listens for events when its activeIn condition is true.
 pub struct Transition {
-    pub id: String,
+    pub id: TransitionId,
+    pub name: String,
     /// When this transition should listen for events
     pub active_in: ActiveIn,
     /// The event type to listen for
@@ -23,30 +91,36 @@ impl fmt::Debug for Transition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Transition")
             .field("id", &self.id)
+            .field("name", &self.name)
             .field("event", &self.event)
             .field("has_on_tran", &self.on_tran.is_some())
             .finish()
     }
 }
 
-/// Unique identifier for an event type
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct EventId(pub String);
-
-impl EventId {
-    pub fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
+impl PartialEq for Transition {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
     }
 }
+
+impl Eq for Transition {}
 
 /// Side effect handler for transition events
 pub type TransitionHandler = Box<dyn Fn() + Send + Sync>;
 
 impl Transition {
     /// Create a new Transition with runtime ActiveIn
-    pub fn new(id: impl Into<String>, active_in: ActiveIn, event: EventId, update: Update) -> Self {
+    pub fn new(
+        id: TransitionId,
+        name: impl Into<String>,
+        active_in: ActiveIn,
+        event: EventId,
+        update: Update,
+    ) -> Self {
         Self {
-            id: id.into(),
+            id,
+            name: name.into(),
             active_in,
             event,
             update,
@@ -54,34 +128,14 @@ impl Transition {
         }
     }
 
-    /// Create a new Transition from a blueprint ActiveInBlueprint
-    pub fn from_blueprint(
-        id: impl Into<String>,
-        active_in: ActiveInBlueprint,
-        event: EventId,
-        update: Update,
-    ) -> Self {
+    /// Create a new Transition from a blueprint
+    pub fn from_blueprint(blueprint: TransitionBlueprint) -> Self {
         Self {
-            id: id.into(),
-            active_in: ActiveIn::from_blueprint(active_in),
-            event,
-            update,
-            on_tran: None,
-        }
-    }
-
-    /// Create a new Transition from full blueprint (ActiveInBlueprint + UpdateBlueprint)
-    pub fn from_blueprint_full(
-        id: impl Into<String>,
-        active_in: ActiveInBlueprint,
-        event: EventId,
-        update: UpdateBlueprint,
-    ) -> Self {
-        Self {
-            id: id.into(),
-            active_in: ActiveIn::from_blueprint(active_in),
-            event,
-            update: Update::from_blueprint(update),
+            id: blueprint.id,
+            name: blueprint.name,
+            active_in: ActiveIn::from_blueprint(blueprint.active_in),
+            event: blueprint.event,
+            update: Update::from_blueprint(blueprint.update),
             on_tran: None,
         }
     }
@@ -115,7 +169,8 @@ impl Transition {
 
 /// Builder for constructing Transition instances
 pub struct TransitionBuilder {
-    id: Option<String>,
+    id: Option<TransitionId>,
+    name: Option<String>,
     active_in: Option<ActiveIn>,
     event: Option<EventId>,
     update: Option<Update>,
@@ -126,6 +181,7 @@ impl TransitionBuilder {
     pub fn new() -> Self {
         Self {
             id: None,
+            name: None,
             active_in: None,
             event: None,
             update: None,
@@ -133,8 +189,13 @@ impl TransitionBuilder {
         }
     }
 
-    pub fn id(mut self, id: impl Into<String>) -> Self {
-        self.id = Some(id.into());
+    pub fn id(mut self, id: TransitionId) -> Self {
+        self.id = Some(id);
+        self
+    }
+
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
         self
     }
 
@@ -168,12 +229,14 @@ impl TransitionBuilder {
 
     pub fn build(self) -> Result<Transition, String> {
         let id = self.id.ok_or("Transition id is required")?;
+        let name = self.name.ok_or("Transition name is required")?;
         let active_in = self.active_in.ok_or("active_in is required")?;
         let event = self.event.ok_or("event is required")?;
         let update = self.update.ok_or("update is required")?;
 
         Ok(Transition {
             id,
+            name,
             active_in,
             event,
             update,
@@ -196,27 +259,79 @@ mod tests {
     use crate::update::Update;
 
     #[test]
-    fn test_transition_creation() {
+    fn test_transition_blueprint() {
         let mode_id = AspectId(0);
-        let active_in = ActiveIn::aspect_bool(mode_id, true);
+        let transition_id = TransitionId(0);
+        let active_in = ActiveInBlueprint::aspect_bool(mode_id, true);
         let event = EventId::new("start");
-        let update = Update::set_bool(mode_id, false);
+        let update = UpdateBlueprint::set_bool(mode_id, false);
 
-        let transition = Transition::new("test_transition", active_in, event, update);
+        let blueprint = TransitionBlueprint::new(transition_id, "test_transition", active_in, event, update);
 
-        assert_eq!(transition.id, "test_transition");
+        assert_eq!(blueprint.id, TransitionId(0));
+        assert_eq!(blueprint.name, "test_transition");
+        assert_eq!(blueprint.event, EventId::new("start"));
+        // node_count = 1 (Transition) + 1 (AspectBool) + 1 (Set) = 3
+        assert_eq!(blueprint.node_count(), 3);
+    }
+
+    #[test]
+    fn test_transition_from_blueprint() {
+        let mode_id = AspectId(0);
+        let transition_id = TransitionId(0);
+        let active_in = ActiveInBlueprint::aspect_bool(mode_id, true);
+        let event = EventId::new("start");
+        let update = UpdateBlueprint::set_bool(mode_id, false);
+
+        let blueprint = TransitionBlueprint::new(transition_id, "test_transition", active_in, event, update);
+        let transition = Transition::from_blueprint(blueprint);
+
+        assert_eq!(transition.id, TransitionId(0));
+        assert_eq!(transition.name, "test_transition");
         assert_eq!(transition.event, EventId::new("start"));
         assert!(transition.on_tran.is_none());
     }
 
     #[test]
+    fn test_transition_creation() {
+        let mode_id = AspectId(0);
+        let transition_id = TransitionId(0);
+        let active_in = ActiveIn::aspect_bool(mode_id, true);
+        let event = EventId::new("start");
+        let update = Update::set_bool(mode_id, false);
+
+        let transition = Transition::new(transition_id, "test_transition", active_in, event, update);
+
+        assert_eq!(transition.id, TransitionId(0));
+        assert_eq!(transition.name, "test_transition");
+        assert_eq!(transition.event, EventId::new("start"));
+        assert!(transition.on_tran.is_none());
+    }
+
+    #[test]
+    fn test_transition_equality() {
+        let transition_id = TransitionId(0);
+        let active_in = ActiveIn::always();
+        let event = EventId::new("start");
+        let update = Update::noop();
+
+        let transition1 = Transition::new(transition_id, "transition1", active_in.clone(), event.clone(), update.clone());
+        let transition2 = Transition::new(transition_id, "transition2", active_in.clone(), event.clone(), update.clone());
+        let transition3 = Transition::new(TransitionId(1), "transition3", active_in, event, update);
+
+        assert_eq!(transition1, transition2);  // Same ID, different names
+        assert_ne!(transition1, transition3);  // Different IDs
+    }
+
+    #[test]
     fn test_transition_activation() {
         let mode_id = AspectId(0);
+        let transition_id = TransitionId(0);
         let active_in = ActiveIn::aspect_bool(mode_id, true);
         let event = EventId::new("start");
         let update = Update::noop();
 
-        let transition = Transition::new("test_transition", active_in, event, update);
+        let transition = Transition::new(transition_id, "test_transition", active_in, event, update);
 
         let state_active = StateBuilder::new()
             .set_bool(mode_id, true)
@@ -233,11 +348,12 @@ mod tests {
     #[test]
     fn test_transition_apply() {
         let mode_id = AspectId(0);
+        let transition_id = TransitionId(0);
         let active_in = ActiveIn::always();
         let event = EventId::new("start");
         let update = Update::set_bool(mode_id, false);
 
-        let transition = Transition::new("test_transition", active_in, event, update);
+        let transition = Transition::new(transition_id, "test_transition", active_in, event, update);
 
         let state = StateBuilder::new()
             .set_bool(mode_id, true)
@@ -251,12 +367,14 @@ mod tests {
     #[test]
     fn test_transition_builder() {
         let mode_id = AspectId(0);
+        let transition_id = TransitionId(0);
         let active_in = ActiveIn::always();
         let event = EventId::new("start");
         let update = Update::set_bool(mode_id, false);
 
         let transition = TransitionBuilder::new()
-            .id("test_transition")
+            .id(transition_id)
+            .name("test_transition")
             .active_in(active_in)
             .event(event)
             .update(update)
@@ -264,7 +382,8 @@ mod tests {
             .build()
             .unwrap();
 
-        assert_eq!(transition.id, "test_transition");
+        assert_eq!(transition.id, TransitionId(0));
+        assert_eq!(transition.name, "test_transition");
         assert!(transition.on_tran.is_some());
     }
 }

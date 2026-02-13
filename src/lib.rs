@@ -12,8 +12,8 @@ pub use aspect::{
     StateAspect, Bounds, validate_bounds, any_value,
 };
 pub use active_in::{ActiveIn, ActiveInBlueprint, ActiveInBlueprintBuilder, Predicate};
-pub use zone::Zone;
-pub use transition::Transition;
+pub use zone::{Zone, ZoneBlueprint, ZoneId};
+pub use transition::{Transition, TransitionBlueprint, TransitionId, EventId};
 pub use update::{Update, UpdateBlueprint, UpdateBlueprintBuilder};
 pub use blueprint::{StateMachineBlueprint, AspectDescriptor, BlueprintBuilder};
 pub use runtime::StateMachineRuntime;
@@ -25,8 +25,8 @@ pub mod prelude {
         StateAspect, Bounds, validate_bounds, any_value,
     };
     pub use crate::active_in::{ActiveIn, ActiveInBlueprint, ActiveInBlueprintBuilder, Predicate};
-    pub use crate::zone::Zone;
-    pub use crate::transition::Transition;
+    pub use crate::zone::{Zone, ZoneBlueprint, ZoneId};
+    pub use crate::transition::{Transition, TransitionBlueprint, TransitionId, EventId};
     pub use crate::update::{Update, UpdateBlueprint, UpdateBlueprintBuilder};
     pub use crate::blueprint::{StateMachineBlueprint, AspectDescriptor, BlueprintBuilder};
     pub use crate::runtime::StateMachineRuntime;

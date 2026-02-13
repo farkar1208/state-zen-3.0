@@ -1,5 +1,6 @@
 use crate::blueprint::StateMachineBlueprint;
 use crate::transition::EventId;
+use crate::zone::ZoneId;
 use crate::aspect::State;
 use std::collections::HashMap;
 
@@ -15,7 +16,7 @@ pub struct StateMachineRuntime {
     state: State,
     
     /// Zone activation tracking (zone_id -> active)
-    zone_activations: HashMap<String, bool>,
+    zone_activations: HashMap<ZoneId, bool>,
 }
 
 impl StateMachineRuntime {
@@ -25,7 +26,7 @@ impl StateMachineRuntime {
         let zone_activations = blueprint
             .zones()
             .iter()
-            .map(|zone| (zone.id.clone(), false))
+            .map(|zone| (zone.id, false))
             .collect();
         
         Self {
@@ -95,12 +96,12 @@ impl StateMachineRuntime {
             // Zone just became active
             if is_active && !was_active {
                 zone.enter();
-                self.zone_activations.insert(zone.id.clone(), true);
+                self.zone_activations.insert(zone.id, true);
             }
             // Zone just became inactive
             else if !is_active && was_active {
                 zone.exit();
-                self.zone_activations.insert(zone.id.clone(), false);
+                self.zone_activations.insert(zone.id, false);
             }
         }
     }
@@ -114,17 +115,17 @@ impl StateMachineRuntime {
     }
     
     /// Get currently active zone IDs
-    pub fn active_zones(&self) -> Vec<String> {
+    pub fn active_zones(&self) -> Vec<ZoneId> {
         self.zone_activations
             .iter()
             .filter(|(_, active)| **active)
-            .map(|(id, _)| id.clone())
+            .map(|(id, _)| *id)
             .collect()
     }
     
     /// Check if a specific zone is active
-    pub fn is_zone_active(&self, zone_id: &str) -> bool {
-        *self.zone_activations.get(zone_id).unwrap_or(&false)
+    pub fn is_zone_active(&self, zone_id: ZoneId) -> bool {
+        *self.zone_activations.get(&zone_id).unwrap_or(&false)
     }
     
     /// Reset the state machine to initial state
@@ -133,7 +134,7 @@ impl StateMachineRuntime {
         self.zone_activations = self.blueprint
             .zones()
             .iter()
-            .map(|zone| (zone.id.clone(), false))
+            .map(|zone| (zone.id, false))
             .collect();
         
         // Initialize zone activations
@@ -169,6 +170,7 @@ mod tests {
         let aspect: StateAspect<String> = StateAspect::new(AspectId(0), "mode", "idle".to_string());
 
         let transition = Transition::new(
+            TransitionId(0),
             "start",
             ActiveIn::aspect_string_eq(AspectId(0), "idle"),
             EventId::new("start"),
@@ -193,9 +195,10 @@ mod tests {
         let mode_aspect: StateAspect<String> = StateAspect::new(AspectId(0), "mode", "idle".to_string());
         let battery_aspect: StateAspect<i64> = StateAspect::new(AspectId(1), "battery", 100);
 
-        let zone = Zone::new("low_battery", ActiveIn::aspect_lt(AspectId(1), 20));
+        let zone = Zone::new(ZoneId(0), "low_battery", ActiveIn::aspect_lt(AspectId(1), 20));
 
         let transition = Transition::new(
+            TransitionId(0),
             "consume",
             ActiveIn::always(),
             EventId::new("consume"),
@@ -210,12 +213,12 @@ mod tests {
 
         let mut runtime = StateMachineRuntime::new(blueprint);
 
-        assert!(!runtime.is_zone_active("low_battery"));
+        assert!(!runtime.is_zone_active(ZoneId(0)));
 
         // Dispatch event to lower battery
         runtime.dispatch_str("consume");
 
-        assert!(runtime.is_zone_active("low_battery"));
+        assert!(runtime.is_zone_active(ZoneId(0)));
     }
 
     #[test]
@@ -223,13 +226,14 @@ mod tests {
         let aspect: StateAspect<String> = StateAspect::new(AspectId(0), "mode", "idle".to_string());
 
         let transition = Transition::new(
+            TransitionId(0),
             "start",
             ActiveIn::always(),
             EventId::new("start"),
             Update::set_string(AspectId(0), "running"),
         );
 
-        let zone = Zone::new("running", ActiveIn::aspect_string_eq(AspectId(0), "running"));
+        let zone = Zone::new(ZoneId(0), "running", ActiveIn::aspect_string_eq(AspectId(0), "running"));
 
         let blueprint = BlueprintBuilder::new()
             .id("test")
@@ -243,10 +247,10 @@ mod tests {
 
         runtime.dispatch_str("start");
         assert_eq!(runtime.state().get_as::<String>(AspectId(0)), Some(&"running".to_string()));
-        assert!(runtime.is_zone_active("running"));
+        assert!(runtime.is_zone_active(ZoneId(0)));
 
         runtime.reset();
         assert_eq!(runtime.state().get_as::<String>(AspectId(0)), Some(&"idle".to_string()));
-        assert!(!runtime.is_zone_active("running"));
+        assert!(!runtime.is_zone_active(ZoneId(0)));
     }
 }

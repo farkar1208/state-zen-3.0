@@ -1,4 +1,4 @@
-use state_zen::{AspectId, StateAspect, Zone, Transition, StateMachineRuntime};
+use state_zen::{AspectId, StateAspect, Zone, ZoneId, Transition, TransitionId, StateMachineRuntime};
 use state_zen::transition::EventId;
 use state_zen::active_in::ActiveIn;
 use state_zen::update::Update;
@@ -27,6 +27,7 @@ fn main() {
 
     // Create a zone that activates when charging
     let charging_zone = Zone::new(
+        ZoneId(0),
         "charging_zone",
         ActiveIn::aspect_eq_typed(AspectId(2), true),
     )
@@ -39,6 +40,7 @@ fn main() {
 
     // Create a low battery zone
     let low_battery_zone = Zone::new(
+        ZoneId(1),
         "low_battery_zone",
         ActiveIn::aspect_lt_typed(AspectId(1), 20),
     )
@@ -51,6 +53,7 @@ fn main() {
 
     // Create a running zone
     let running_zone = Zone::new(
+        ZoneId(2),
         "running_zone",
         ActiveIn::aspect_eq_typed(AspectId(0), "running".to_string()),
     )
@@ -63,6 +66,7 @@ fn main() {
 
     // Create transitions
     let start_transition = Transition::new(
+        TransitionId(0),
         "start",
         ActiveIn::aspect_eq_typed(AspectId(0), "idle".to_string()),
         EventId::new("start_button"),
@@ -73,6 +77,7 @@ fn main() {
     });
 
     let stop_transition = Transition::new(
+        TransitionId(1),
         "stop",
         ActiveIn::aspect_eq_typed(AspectId(0), "running".to_string()),
         EventId::new("stop_button"),
@@ -83,6 +88,7 @@ fn main() {
     });
 
     let charge_transition = Transition::new(
+        TransitionId(2),
         "charge",
         ActiveIn::always(),
         EventId::new("charge"),
@@ -93,6 +99,7 @@ fn main() {
     });
 
     let uncharge_transition = Transition::new(
+        TransitionId(3),
         "uncharge",
         ActiveIn::always(),
         EventId::new("uncharge"),
@@ -103,6 +110,7 @@ fn main() {
     });
 
     let consume_battery_transition = Transition::new(
+        TransitionId(4),
         "consume_battery",
         ActiveIn::aspect_eq_typed(AspectId(0), "running".to_string()),
         EventId::new("tick"),
@@ -226,7 +234,7 @@ fn print_runtime_state(runtime: &StateMachineRuntime) {
     
     let active_zones = runtime.active_zones();
     if !active_zones.is_empty() {
-        println!("  Active zones: {}", active_zones.join(", "));
+        println!("  Active zones: {}", active_zones.iter().map(|id| format!("{:?}", id)).collect::<Vec<_>>().join(", "));
     }
     
     println!("  Current State:");

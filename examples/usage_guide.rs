@@ -2,7 +2,7 @@
 ///
 /// 本示例展示如何使用 state-zen 创建和运行状态机
 
-use state_zen::{AspectId, StateAspect, Zone, Transition, StateMachineRuntime, StateMachineBlueprint};
+use state_zen::{AspectId, StateAspect, Zone, ZoneId, Transition, TransitionId, StateMachineRuntime, StateMachineBlueprint};
 use state_zen::transition::EventId;
 use state_zen::active_in::ActiveIn;
 use state_zen::update::Update;
@@ -44,6 +44,7 @@ fn main() {
     
     // 低电量警告区域
     let low_battery_zone = Zone::new(
+        ZoneId(0),
         "low_battery",
         ActiveIn::aspect_lt_typed(AspectId(1), 20)
     )
@@ -56,6 +57,7 @@ fn main() {
 
     // 充电区域
     let charging_zone = Zone::new(
+        ZoneId(1),
         "charging",
         ActiveIn::aspect_eq_typed(AspectId(2), true)
     )
@@ -68,6 +70,7 @@ fn main() {
 
     // 运行区域
     let running_zone = Zone::new(
+        ZoneId(2),
         "running",
         ActiveIn::aspect_eq_typed(AspectId(0), "running".to_string())
     )
@@ -87,6 +90,7 @@ fn main() {
     
     // 启动设备
     let start_transition = Transition::new(
+        TransitionId(0),
         "start",
         ActiveIn::aspect_eq_typed(AspectId(0), "idle".to_string()),
         EventId::new("start"),
@@ -95,6 +99,7 @@ fn main() {
 
     // 停止设备
     let stop_transition = Transition::new(
+        TransitionId(1),
         "stop",
         ActiveIn::aspect_eq_typed(AspectId(0), "running".to_string()),
         EventId::new("stop"),
@@ -103,6 +108,7 @@ fn main() {
 
     // 连接充电器
     let charge_transition = Transition::new(
+        TransitionId(2),
         "charge",
         ActiveIn::always(),
         EventId::new("charge"),
@@ -111,6 +117,7 @@ fn main() {
 
     // 断开充电器
     let uncharge_transition = Transition::new(
+        TransitionId(3),
         "uncharge",
         ActiveIn::always(),
         EventId::new("uncharge"),
@@ -119,6 +126,7 @@ fn main() {
     
     // 消耗电量
     let consume_transition = Transition::new(
+        TransitionId(4),
         "consume",
         ActiveIn::aspect_eq_typed(AspectId(0), "running".to_string()),
         EventId::new("tick"),
