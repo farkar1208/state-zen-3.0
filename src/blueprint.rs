@@ -1,4 +1,4 @@
-use crate::aspect::{AspectId, State, StateAspect, StateAspectLegacy};
+use crate::aspect::{AspectId, State, StateAspect};
 use crate::zone::Zone;
 use crate::transition::{EventId, Transition};
 use std::any::{Any, TypeId};
@@ -58,17 +58,6 @@ impl AspectDescriptor {
             has_max: aspect.bounds.max.is_some(),
         }
     }
-
-    pub fn from_legacy(aspect: &StateAspectLegacy) -> Self {
-        Self {
-            id: aspect.id,
-            name: aspect.name.clone(),
-            type_id: TypeId::of::<crate::aspect::StateValue>(),
-            default_value: Box::new(aspect.default_value.clone()),
-            has_min: aspect.min_value.is_some(),
-            has_max: aspect.max_value.is_some(),
-        }
-    }
 }
 
 /// A blueprint for defining a state machine without runtime execution
@@ -115,13 +104,6 @@ impl StateMachineBlueprint {
         T: Any + Send + Sync + Clone,
     {
         let descriptor = AspectDescriptor::new(&aspect);
-        self.aspects.insert(aspect.id, descriptor);
-        self
-    }
-
-    /// Add a legacy state aspect to the blueprint
-    pub fn add_aspect_legacy(&mut self, aspect: StateAspectLegacy) -> &mut Self {
-        let descriptor = AspectDescriptor::from_legacy(&aspect);
         self.aspects.insert(aspect.id, descriptor);
         self
     }
@@ -327,12 +309,6 @@ impl BlueprintBuilder {
         self
     }
 
-    /// Add a legacy aspect
-    pub fn aspect_legacy(mut self, aspect: StateAspectLegacy) -> Self {
-        self.aspects.push(Box::new(aspect));
-        self
-    }
-
     pub fn zone(mut self, zone: Zone) -> Self {
         self.zones.push(zone);
         self
@@ -403,15 +379,6 @@ fn try_add_aspect(blueprint: &mut StateMachineBlueprint, aspect_box: Box<dyn Any
     match current.downcast::<StateAspect<String>>() {
         Ok(aspect) => {
             blueprint.add_aspect(*aspect);
-            return Ok(());
-        }
-        Err(rest) => current = rest,
-    }
-
-    // Try legacy
-    match current.downcast::<StateAspectLegacy>() {
-        Ok(aspect) => {
-            blueprint.add_aspect_legacy(*aspect);
             return Ok(());
         }
         Err(_) => {

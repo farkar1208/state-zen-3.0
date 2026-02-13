@@ -6,54 +6,6 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AspectId(pub usize);
 
-/// Represents the value of a StateAspect (legacy type for backward compatibility)
-#[derive(Debug, Clone, PartialEq)]
-pub enum StateValue {
-    Bool(bool),
-    Integer(i64),
-    Float(f64),
-    String(String),
-}
-
-impl StateValue {
-    /// Validate this value against constraints
-    pub fn validate(&self, min: Option<&StateValue>, max: Option<&StateValue>) -> Result<(), String> {
-        if let (Some(min_val), Some(max_val)) = (min, max) {
-            match (self, min_val, max_val) {
-                (StateValue::Integer(v), StateValue::Integer(min_v), StateValue::Integer(max_v)) => {
-                    if v < min_v || v > max_v {
-                        return Err(format!(
-                            "Integer value {} out of range [{}, {}]",
-                            v, min_v, max_v
-                        ));
-                    }
-                }
-                (StateValue::Float(v), StateValue::Float(min_v), StateValue::Float(max_v)) => {
-                    if v < min_v || v > max_v {
-                        return Err(format!(
-                            "Float value {} out of range [{}, {}]",
-                            v, min_v, max_v
-                        ));
-                    }
-                }
-                _ => {}
-            }
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Display for StateValue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            StateValue::Bool(b) => write!(f, "{}", b),
-            StateValue::Integer(i) => write!(f, "{}", i),
-            StateValue::Float(v) => write!(f, "{}", v),
-            StateValue::String(s) => write!(f, "\"{}\"", s),
-        }
-    }
-}
-
 /// Value bounds for type-constrained aspects
 #[derive(Debug, Clone)]
 pub struct Bounds<T> {
@@ -161,54 +113,6 @@ where
         T: PartialOrd + fmt::Display,
     {
         validate_bounds(value, &self.bounds)
-    }
-}
-
-/// Legacy StateAspect using StateValue enum (for backward compatibility)
-#[derive(Debug, Clone)]
-pub struct StateAspectLegacy {
-    pub id: AspectId,
-    pub name: String,
-    pub default_value: StateValue,
-    /// Optional minimum value constraint
-    pub min_value: Option<StateValue>,
-    /// Optional maximum value constraint
-    pub max_value: Option<StateValue>,
-}
-
-impl StateAspectLegacy {
-    pub fn new(id: AspectId, name: impl Into<String>, default_value: StateValue) -> Self {
-        Self {
-            id,
-            name: name.into(),
-            default_value,
-            min_value: None,
-            max_value: None,
-        }
-    }
-
-    /// Set minimum value constraint
-    pub fn with_min(mut self, min: StateValue) -> Self {
-        self.min_value = Some(min);
-        self
-    }
-
-    /// Set maximum value constraint
-    pub fn with_max(mut self, max: StateValue) -> Self {
-        self.max_value = Some(max);
-        self
-    }
-
-    /// Set both min and max value constraints
-    pub fn with_range(mut self, min: StateValue, max: StateValue) -> Self {
-        self.min_value = Some(min);
-        self.max_value = Some(max);
-        self
-    }
-
-    /// Validate a value against this aspect's constraints
-    pub fn validate_value(&self, value: &StateValue) -> Result<(), String> {
-        value.validate(self.min_value.as_ref(), self.max_value.as_ref())
     }
 }
 
@@ -605,25 +509,5 @@ mod tests {
         assert_eq!(state.get_as::<i64>(id2), Some(&42));
         assert_eq!(state.get_as::<f64>(id3), Some(&3.14));
         assert_eq!(state.get_as::<String>(id4), Some(&"hello".to_string()));
-    }
-
-    // Legacy tests for backward compatibility
-    #[test]
-    fn test_legacy_aspect() {
-        let id = AspectId(0);
-        let aspect = StateAspectLegacy::new(id, "mode", StateValue::String("idle".to_string()));
-
-        assert_eq!(aspect.id, id);
-        assert_eq!(aspect.name, "mode");
-    }
-
-    #[test]
-    fn test_legacy_aspect_with_range() {
-        let id = AspectId(0);
-        let aspect = StateAspectLegacy::new(id, "count", StateValue::Integer(0))
-            .with_range(StateValue::Integer(0), StateValue::Integer(100));
-
-        assert!(aspect.validate_value(&StateValue::Integer(50)).is_ok());
-        assert!(aspect.validate_value(&StateValue::Integer(101)).is_err());
-    }
-}
+            }
+        }

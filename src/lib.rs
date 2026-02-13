@@ -8,8 +8,8 @@ pub mod runtime;
 
 // Export core types
 pub use aspect::{
-    AspectId, StateValue, State, StateBuilder,
-    StateAspect, StateAspectLegacy, Bounds, validate_bounds, any_value,
+    AspectId, State, StateBuilder,
+    StateAspect, Bounds, validate_bounds, any_value,
 };
 pub use active_in::{ActiveIn, Predicate};
 pub use zone::Zone;
@@ -21,8 +21,8 @@ pub use runtime::StateMachineRuntime;
 /// Prelude module for convenient imports
 pub mod prelude {
     pub use crate::aspect::{
-        AspectId, StateValue, State, StateBuilder,
-        StateAspect, StateAspectLegacy, Bounds, validate_bounds, any_value,
+        AspectId, State, StateBuilder,
+        StateAspect, Bounds, validate_bounds, any_value,
     };
     pub use crate::active_in::{ActiveIn, Predicate};
     pub use crate::zone::Zone;
