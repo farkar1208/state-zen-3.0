@@ -14,7 +14,7 @@ pub use aspect::{
 pub use active_in::{ActiveIn, ActiveInBlueprint, ActiveInBlueprintBuilder, Predicate};
 pub use zone::Zone;
 pub use transition::Transition;
-pub use update::Update;
+pub use update::{Update, UpdateBlueprint, UpdateBlueprintBuilder};
 pub use blueprint::{StateMachineBlueprint, AspectDescriptor, BlueprintBuilder};
 pub use runtime::StateMachineRuntime;
 
@@ -27,7 +27,7 @@ pub mod prelude {
     pub use crate::active_in::{ActiveIn, ActiveInBlueprint, ActiveInBlueprintBuilder, Predicate};
     pub use crate::zone::Zone;
     pub use crate::transition::Transition;
-    pub use crate::update::Update;
+    pub use crate::update::{Update, UpdateBlueprint, UpdateBlueprintBuilder};
     pub use crate::blueprint::{StateMachineBlueprint, AspectDescriptor, BlueprintBuilder};
     pub use crate::runtime::StateMachineRuntime;
 }

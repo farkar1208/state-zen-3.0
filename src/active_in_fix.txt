@@ -1,0 +1,104 @@
+/// Evaluate an ActiveInBlueprint AST and return the result
+pub(crate) fn evaluate_blueprint(blueprint: &ActiveInBlueprint, state: &State) -> bool {
+    match blueprint {
+        ActiveInBlueprint::Always => true,
+        ActiveInBlueprint::Never => false,
+        ActiveInBlueprint::AspectBool { aspect_id, value } => state
+            .get_as::<bool>(*aspect_id)
+            .map_or(false, |b| *b == *value),
+        ActiveInBlueprint::AspectEq { aspect_id, value } => state
+            .get_as::<i64>(*aspect_id)
+            .map_or(false, |i| *i == *value),
+        ActiveInBlueprint::AspectLt { aspect_id, value } => state
+            .get_as::<i64>(*aspect_id)
+            .map_or(false, |i| *i < *value),
+        ActiveInBlueprint::AspectGt { aspect_id, value } => state
+            .get_as::<i64>(*aspect_id)
+            .map_or(false, |i| *i > *value),
+        ActiveInBlueprint::AspectInRange { aspect_id, min, max } => state
+            .get_as::<i64>(*aspect_id)
+            .map_or(false, |i| *i >= *min && *i <= *max),
+        ActiveInBlueprint::AspectStringEq { aspect_id, value } => state
+            .get_as::<String>(*aspect_id)
+            .map_or(false, |s| *s == *value),
+        ActiveInBlueprint::AspectEqTyped { aspect_id, type_id: _, value } => {
+            // Try to match the type at runtime
+            state.get(*aspect_id).map_or(false, |any| {
+                if let Some(v) = any.downcast_ref::<i64>() {
+                    if let Some(target) = value.downcast_ref::<i64>() {
+                        *v == *target
+                    } else {
+                        false
+                    }
+                } else if let Some(v) = any.downcast_ref::<String>() {
+                    if let Some(target) = value.downcast_ref::<String>() {
+                        *v == *target
+                    } else {
+                        false
+                    }
+                } else if let Some(v) = any.downcast_ref::<bool>() {
+                    if let Some(target) = value.downcast_ref::<bool>() {
+                        *v == *target
+                    } else {
+                        false
+                    }
+                } else if let Some(v) = any.downcast_ref::<f64>() {
+                    if let Some(target) = value.downcast_ref::<f64>() {
+                        *v == *target
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            })
+        }
+        ActiveInBlueprint::AspectLtTyped { aspect_id, type_id: _, value } => {
+            // Try to match the type at runtime
+            state.get(*aspect_id).map_or(false, |any| {
+                if let Some(v) = any.downcast_ref::<i64>() {
+                    if let Some(target) = value.downcast_ref::<i64>() {
+                        *v < *target
+                    } else {
+                        false
+                    }
+                } else if let Some(v) = any.downcast_ref::<f64>() {
+                    if let Some(target) = value.downcast_ref::<f64>() {
+                        *v < *target
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            })
+        }
+        ActiveInBlueprint::AspectGtTyped { aspect_id, type_id: _, value } => {
+            // Try to match the type at runtime
+            state.get(*aspect_id).map_or(false, |any| {
+                if let Some(v) = any.downcast_ref::<i64>() {
+                    if let Some(target) = value.downcast_ref::<i64>() {
+                        *v > *target
+                    } else {
+                        false
+                    }
+                } else if let Some(v) = any.downcast_ref::<f64>() {
+                    if let Some(target) = value.downcast_ref::<f64>() {
+                        *v > *target
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            })
+        }
+        ActiveInBlueprint::And(predicates) => {
+            predicates.iter().all(|p| evaluate_blueprint(p, state))
+        }
+        ActiveInBlueprint::Or(predicates) => {
+            predicates.iter().any(|p| evaluate_blueprint(p, state))
+        }
+        ActiveInBlueprint::Not(predicate) => !evaluate_blueprint(predicate, state),
+    }
+}

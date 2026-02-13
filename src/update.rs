@@ -1,6 +1,300 @@
 use crate::aspect::{AspectId, State};
+use crate::active_in::ActiveInBlueprint;
 use std::any::Any;
 use std::sync::Arc;
+
+// ============================================================================
+// BLUEPRINT LAYER - AST for Update operations
+// ============================================================================
+
+/// AST node types for Update operations (blueprint layer)
+#[derive(Debug, Clone)]
+pub enum UpdateBlueprint {
+    /// No operation
+    Noop,
+
+    /// Set an aspect to a specific value
+    Set {
+        aspect_id: AspectId,
+        value: BlueprintValue,
+    },
+
+    /// Modify an aspect's value using a transformation function (type-erased)
+    Modify {
+        aspect_id: AspectId,
+        type_id: std::any::TypeId,
+        op: ModifyOp,
+    },
+
+    /// Compose multiple updates to apply sequentially
+    Compose(Vec<UpdateBlueprint>),
+
+    /// Conditional update based on state predicate
+    Conditional {
+        predicate: ActiveInBlueprint,
+        then_update: Box<UpdateBlueprint>,
+        else_update: Option<Box<UpdateBlueprint>>,
+    },
+}
+
+/// Blueprint value (type-erased representation)
+#[derive(Debug, Clone)]
+pub enum BlueprintValue {
+    Bool(bool),
+    Integer(i64),
+    Float(f64),
+    String(String),
+    Typed {
+        type_id: std::any::TypeId,
+        bytes: Vec<u8>,
+    },
+}
+
+/// Modify operation types
+#[derive(Debug, Clone)]
+pub enum ModifyOp {
+    /// Increment by 1
+    Increment,
+    /// Decrement by 1
+    Decrement,
+    /// Add a delta
+    Add(i64),
+    /// Toggle boolean
+    Toggle,
+    /// Custom modification (type-erased)
+    Custom {
+        op_type: String, // For identification
+        bytes: Vec<u8>,
+    },
+}
+
+impl UpdateBlueprint {
+    /// Create a no-op update
+    pub fn noop() -> Self {
+        UpdateBlueprint::Noop
+    }
+
+    /// Set an aspect to a specific value (type-erased)
+    pub fn set(aspect_id: AspectId, value: BlueprintValue) -> Self {
+        UpdateBlueprint::Set { aspect_id, value }
+    }
+
+    /// Set a boolean aspect
+    pub fn set_bool(aspect_id: AspectId, value: bool) -> Self {
+        UpdateBlueprint::Set {
+            aspect_id,
+            value: BlueprintValue::Bool(value),
+        }
+    }
+
+    /// Set an integer aspect
+    pub fn set_int(aspect_id: AspectId, value: i64) -> Self {
+        UpdateBlueprint::Set {
+            aspect_id,
+            value: BlueprintValue::Integer(value),
+        }
+    }
+
+    /// Set a float aspect
+    pub fn set_float(aspect_id: AspectId, value: f64) -> Self {
+        UpdateBlueprint::Set {
+            aspect_id,
+            value: BlueprintValue::Float(value),
+        }
+    }
+
+    /// Set a string aspect
+    pub fn set_string(aspect_id: AspectId, value: impl Into<String>) -> Self {
+        UpdateBlueprint::Set {
+            aspect_id,
+            value: BlueprintValue::String(value.into()),
+        }
+    }
+
+    /// Increment an integer aspect
+    pub fn increment(aspect_id: AspectId) -> Self {
+        UpdateBlueprint::Modify {
+            aspect_id,
+            type_id: std::any::TypeId::of::<i64>(),
+            op: ModifyOp::Increment,
+        }
+    }
+
+    /// Decrement an integer aspect
+    pub fn decrement(aspect_id: AspectId) -> Self {
+        UpdateBlueprint::Modify {
+            aspect_id,
+            type_id: std::any::TypeId::of::<i64>(),
+            op: ModifyOp::Decrement,
+        }
+    }
+
+    /// Add a delta to an integer aspect
+    pub fn add(aspect_id: AspectId, delta: i64) -> Self {
+        UpdateBlueprint::Modify {
+            aspect_id,
+            type_id: std::any::TypeId::of::<i64>(),
+            op: ModifyOp::Add(delta),
+        }
+    }
+
+    /// Toggle a boolean aspect
+    pub fn toggle(aspect_id: AspectId) -> Self {
+        UpdateBlueprint::Modify {
+            aspect_id,
+            type_id: std::any::TypeId::of::<bool>(),
+            op: ModifyOp::Toggle,
+        }
+    }
+
+    /// Generic modify for any type
+    pub fn modify_typed<T>(aspect_id: AspectId) -> Self
+    where
+        T: Any + Send + Sync + Clone + 'static,
+    {
+        UpdateBlueprint::Modify {
+            aspect_id,
+            type_id: std::any::TypeId::of::<T>(),
+            op: ModifyOp::Custom {
+                op_type: std::any::type_name::<T>().to_string(),
+                bytes: Vec::new(), // Placeholder for serialized closure
+            },
+        }
+    }
+
+    /// Compose multiple updates to apply sequentially
+    pub fn compose(updates: Vec<UpdateBlueprint>) -> Self {
+        if updates.is_empty() {
+            UpdateBlueprint::Noop
+        } else if updates.len() == 1 {
+            updates.into_iter().next().unwrap()
+        } else {
+            UpdateBlueprint::Compose(updates)
+        }
+    }
+
+    /// Create a conditional update based on state predicate
+    pub fn conditional(
+        predicate: ActiveInBlueprint,
+        then_update: UpdateBlueprint,
+    ) -> Self {
+        UpdateBlueprint::Conditional {
+            predicate,
+            then_update: Box::new(then_update),
+            else_update: None,
+        }
+    }
+
+    /// Create a conditional update with else branch
+    pub fn conditional_else(
+        predicate: ActiveInBlueprint,
+        then_update: UpdateBlueprint,
+        else_update: UpdateBlueprint,
+    ) -> Self {
+        UpdateBlueprint::Conditional {
+            predicate,
+            then_update: Box::new(then_update),
+            else_update: Some(Box::new(else_update)),
+        }
+    }
+
+    /// Count the total number of AST nodes in this update tree
+    pub fn node_count(&self) -> usize {
+        match self {
+            UpdateBlueprint::Noop => 1,
+            UpdateBlueprint::Set { .. } => 1,
+            UpdateBlueprint::Modify { .. } => 1,
+            UpdateBlueprint::Compose(updates) => {
+                1 + updates.iter().map(|u| u.node_count()).sum::<usize>()
+            }
+            UpdateBlueprint::Conditional {
+                predicate,
+                then_update,
+                else_update,
+            } => {
+                1 + predicate.node_count()
+                    + then_update.node_count()
+                    + else_update.as_ref().map(|u| u.node_count()).unwrap_or(0)
+            }
+        }
+    }
+}
+
+// ============================================================================
+// BUILDER FOR UPDATE BLUEPRINT
+// ============================================================================
+
+/// Builder for constructing UpdateBlueprint instances
+pub struct UpdateBlueprintBuilder {
+    operations: Vec<UpdateBlueprint>,
+}
+
+impl UpdateBlueprintBuilder {
+    pub fn new() -> Self {
+        Self {
+            operations: Vec::new(),
+        }
+    }
+
+    pub fn set(mut self, aspect_id: AspectId, value: BlueprintValue) -> Self {
+        self.operations.push(UpdateBlueprint::set(aspect_id, value));
+        self
+    }
+
+    pub fn set_bool(mut self, aspect_id: AspectId, value: bool) -> Self {
+        self.operations.push(UpdateBlueprint::set_bool(aspect_id, value));
+        self
+    }
+
+    pub fn set_int(mut self, aspect_id: AspectId, value: i64) -> Self {
+        self.operations.push(UpdateBlueprint::set_int(aspect_id, value));
+        self
+    }
+
+    pub fn set_float(mut self, aspect_id: AspectId, value: f64) -> Self {
+        self.operations.push(UpdateBlueprint::set_float(aspect_id, value));
+        self
+    }
+
+    pub fn set_string(mut self, aspect_id: AspectId, value: impl Into<String>) -> Self {
+        self.operations.push(UpdateBlueprint::set_string(aspect_id, value));
+        self
+    }
+
+    pub fn increment(mut self, aspect_id: AspectId) -> Self {
+        self.operations.push(UpdateBlueprint::increment(aspect_id));
+        self
+    }
+
+    pub fn decrement(mut self, aspect_id: AspectId) -> Self {
+        self.operations.push(UpdateBlueprint::decrement(aspect_id));
+        self
+    }
+
+    pub fn add(mut self, aspect_id: AspectId, delta: i64) -> Self {
+        self.operations.push(UpdateBlueprint::add(aspect_id, delta));
+        self
+    }
+
+    pub fn toggle(mut self, aspect_id: AspectId) -> Self {
+        self.operations.push(UpdateBlueprint::toggle(aspect_id));
+        self
+    }
+
+    pub fn build(self) -> UpdateBlueprint {
+        UpdateBlueprint::compose(self.operations)
+    }
+}
+
+impl Default for UpdateBlueprintBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ============================================================================
+// RUNTIME LAYER - Compiled updates with closure-based evaluation
+// ============================================================================
 
 /// Represents how state evolves in response to events
 ///
@@ -18,7 +312,7 @@ impl Clone for Update {
     }
 }
 
-/// Internal representation of update operations
+/// Internal representation of update operations (runtime layer)
 enum UpdateOp {
     Noop,
     Set(AspectId, Box<dyn Any + Send + Sync>),
@@ -36,6 +330,13 @@ impl Update {
     pub fn noop() -> Self {
         Self {
             operation: Arc::new(UpdateOp::Noop),
+        }
+    }
+
+    /// Compile an UpdateBlueprint into a runtime Update
+    pub fn from_blueprint(blueprint: UpdateBlueprint) -> Self {
+        Self {
+            operation: Arc::new(compile_update(blueprint)),
         }
     }
 
@@ -251,6 +552,106 @@ impl Update {
     }
 }
 
+/// Compile an UpdateBlueprint AST into a runtime UpdateOp
+fn compile_update(blueprint: UpdateBlueprint) -> UpdateOp {
+    match blueprint {
+        UpdateBlueprint::Noop => UpdateOp::Noop,
+        UpdateBlueprint::Set { aspect_id, value } => {
+            let boxed: Box<dyn Any + Send + Sync> = match value {
+                BlueprintValue::Bool(b) => Box::new(b),
+                BlueprintValue::Integer(i) => Box::new(i),
+                BlueprintValue::Float(f) => Box::new(f),
+                BlueprintValue::String(s) => Box::new(s),
+                BlueprintValue::Typed { type_id, bytes } => {
+                    // For simplicity, only support i32 in typed values
+                    if type_id == std::any::TypeId::of::<i32>() {
+                        if let Some(&v) = deserialize_bytes::<i32>(&bytes) {
+                            Box::new(v)
+                        } else {
+                            Box::new(())
+                        }
+                    } else {
+                        Box::new(())
+                    }
+                }
+            };
+            UpdateOp::Set(aspect_id, boxed)
+        }
+        UpdateBlueprint::Modify { aspect_id, type_id: _, op } => {
+            let f: Arc<dyn Fn(Box<dyn Any + Send + Sync>) -> Box<dyn Any + Send + Sync> + Send + Sync> =
+                match op {
+                    ModifyOp::Increment => Arc::new(|boxed| {
+                        if let Some(i) = boxed.downcast_ref::<i64>() {
+                            Box::new(*i + 1)
+                        } else {
+                            boxed
+                        }
+                    }),
+                    ModifyOp::Decrement => Arc::new(|boxed| {
+                        if let Some(i) = boxed.downcast_ref::<i64>() {
+                            Box::new(*i - 1)
+                        } else {
+                            boxed
+                        }
+                    }),
+                    ModifyOp::Add(delta) => Arc::new(move |boxed| {
+                        if let Some(i) = boxed.downcast_ref::<i64>() {
+                            Box::new(*i + delta)
+                        } else {
+                            boxed
+                        }
+                    }),
+                    ModifyOp::Toggle => Arc::new(|boxed| {
+                        if let Some(b) = boxed.downcast_ref::<bool>() {
+                            Box::new(!*b)
+                        } else {
+                            boxed
+                        }
+                    }),
+                    ModifyOp::Custom { .. } => {
+                        // Placeholder for custom modifications
+                        Arc::new(|boxed| boxed)
+                    }
+                };
+            UpdateOp::Modify(aspect_id, f)
+        }
+        UpdateBlueprint::Compose(updates) => {
+            let compiled: Vec<Update> = updates
+                .into_iter()
+                .map(|u| Update::from_blueprint(u))
+                .collect();
+            UpdateOp::Compose(compiled)
+        }
+        UpdateBlueprint::Conditional {
+            predicate,
+            then_update,
+            else_update,
+        } => {
+            let predicate_fn: Arc<dyn Fn(&State) -> bool + Send + Sync> =
+                Arc::new(move |state| crate::active_in::evaluate_blueprint(&predicate, state));
+            UpdateOp::Conditional {
+                predicate: predicate_fn,
+                then_update: Update::from_blueprint(*then_update),
+                else_update: else_update.map(|u| Update::from_blueprint(*u)),
+            }
+        }
+    }
+}
+
+/// Deserialize bytes back to a value
+fn deserialize_bytes<T>(bytes: &[u8]) -> Option<&T> {
+    if bytes.len() != std::mem::size_of::<T>() {
+        return None;
+    }
+    unsafe {
+        Some(&*(bytes.as_ptr() as *const T))
+    }
+}
+
+// ============================================================================
+// BUILDER FOR RUNTIME UPDATE
+// ============================================================================
+
 /// Builder for constructing Update instances
 pub struct UpdateBuilder {
     operations: Vec<Update>,
@@ -341,13 +742,86 @@ impl Default for UpdateBuilder {
     }
 }
 
+// ============================================================================
+// TESTS
+// ============================================================================
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::aspect::StateBuilder;
 
     #[test]
-    fn test_update_noop() {
+    fn test_blueprint_noop() {
+        let blueprint = UpdateBlueprint::noop();
+        assert_eq!(blueprint.node_count(), 1);
+    }
+
+    #[test]
+    fn test_blueprint_set() {
+        let id = AspectId(0);
+        let blueprint = UpdateBlueprint::set_bool(id, true);
+        assert_eq!(blueprint.node_count(), 1);
+    }
+
+    #[test]
+    fn test_blueprint_increment() {
+        let id = AspectId(0);
+        let blueprint = UpdateBlueprint::increment(id);
+        assert_eq!(blueprint.node_count(), 1);
+    }
+
+    #[test]
+    fn test_blueprint_compose() {
+        let id1 = AspectId(0);
+        let id2 = AspectId(1);
+
+        let blueprint = UpdateBlueprint::compose(vec![
+            UpdateBlueprint::set_bool(id1, true),
+            UpdateBlueprint::increment(id2),
+        ]);
+
+        assert_eq!(blueprint.node_count(), 3); // Compose + 2 leaf nodes
+    }
+
+    #[test]
+    fn test_blueprint_conditional() {
+        let id = AspectId(0);
+        let predicate = crate::active_in::ActiveInBlueprint::aspect_bool(id, true);
+        let blueprint = UpdateBlueprint::conditional(predicate, UpdateBlueprint::increment(id));
+
+        assert_eq!(blueprint.node_count(), 3); // Conditional + predicate + then_update
+    }
+
+    #[test]
+    fn test_blueprint_builder() {
+        let id1 = AspectId(0);
+        let id2 = AspectId(1);
+
+        let blueprint = UpdateBlueprintBuilder::new()
+            .set_bool(id1, true)
+            .increment(id2)
+            .build();
+
+        assert_eq!(blueprint.node_count(), 3);
+    }
+
+    #[test]
+    fn test_runtime_from_blueprint() {
+        let id = AspectId(0);
+        let state = StateBuilder::new()
+            .set_bool(id, true)
+            .build();
+
+        let blueprint = UpdateBlueprint::set_bool(id, false);
+        let runtime = Update::from_blueprint(blueprint);
+
+        let new_state = runtime.apply(state);
+        assert_eq!(new_state.get_as::<bool>(id), Some(&false));
+    }
+
+    #[test]
+    fn test_runtime_noop() {
         let id = AspectId(0);
         let state = StateBuilder::new()
             .set_bool(id, true)
@@ -359,7 +833,7 @@ mod tests {
     }
 
     #[test]
-    fn test_update_set() {
+    fn test_runtime_set() {
         let id = AspectId(0);
         let state = StateBuilder::new()
             .set_bool(id, true)
@@ -371,7 +845,7 @@ mod tests {
     }
 
     #[test]
-    fn test_update_increment() {
+    fn test_runtime_increment() {
         let id = AspectId(0);
         let state = StateBuilder::new()
             .set_int(id, 5)
@@ -383,7 +857,7 @@ mod tests {
     }
 
     #[test]
-    fn test_update_toggle() {
+    fn test_runtime_toggle() {
         let id = AspectId(0);
         let state = StateBuilder::new()
             .set_bool(id, true)
@@ -395,7 +869,7 @@ mod tests {
     }
 
     #[test]
-    fn test_update_compose() {
+    fn test_runtime_compose() {
         let id1 = AspectId(0);
         let id2 = AspectId(1);
 
@@ -415,7 +889,7 @@ mod tests {
     }
 
     #[test]
-    fn test_update_conditional() {
+    fn test_runtime_conditional() {
         let id = AspectId(0);
         let state = StateBuilder::new()
             .set_int(id, 5)
@@ -432,7 +906,7 @@ mod tests {
     }
 
     #[test]
-    fn test_update_builder() {
+    fn test_runtime_builder() {
         let id1 = AspectId(0);
         let id2 = AspectId(1);
 
@@ -453,7 +927,7 @@ mod tests {
     }
 
     #[test]
-    fn test_update_typed() {
+    fn test_runtime_typed() {
         let id = AspectId(0);
         let state = StateBuilder::new()
             .set_typed(id, 42i32)

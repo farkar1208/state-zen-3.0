@@ -1,5 +1,5 @@
 use crate::active_in::{ActiveIn, ActiveInBlueprint};
-use crate::update::Update;
+use crate::update::{Update, UpdateBlueprint};
 use crate::aspect::State;
 use std::fmt;
 
@@ -66,6 +66,22 @@ impl Transition {
             active_in: ActiveIn::from_blueprint(active_in),
             event,
             update,
+            on_tran: None,
+        }
+    }
+
+    /// Create a new Transition from full blueprint (ActiveInBlueprint + UpdateBlueprint)
+    pub fn from_blueprint_full(
+        id: impl Into<String>,
+        active_in: ActiveInBlueprint,
+        event: EventId,
+        update: UpdateBlueprint,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            active_in: ActiveIn::from_blueprint(active_in),
+            event,
+            update: Update::from_blueprint(update),
             on_tran: None,
         }
     }

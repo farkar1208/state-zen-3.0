@@ -492,7 +492,7 @@ impl ActiveIn {
 }
 
 /// Evaluate an ActiveInBlueprint AST and return the result
-fn evaluate_blueprint(blueprint: &ActiveInBlueprint, state: &State) -> bool {
+pub(crate) fn evaluate_blueprint(blueprint: &ActiveInBlueprint, state: &State) -> bool {
     match blueprint {
         ActiveInBlueprint::Always => true,
         ActiveInBlueprint::Never => false,
