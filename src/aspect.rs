@@ -238,7 +238,7 @@ impl PartialEq for State {
         }
         for (key, value) in &self.values {
             if let Some(other_value) = other.values.get(key) {
-                if value.type_id() != other_value.type_id() {
+                if (**value).type_id() != (**other_value).type_id() {
                     return false;
                 }
                 if !eq_any(value, other_value) {
@@ -513,7 +513,7 @@ fn get_type_id_of_any(value: &Box<dyn Any + Send + Sync>) -> TypeId {
         TypeId::of::<Vec<bool>>()
     } else {
         // For unsupported types, return the TypeId of the trait object
-        value.type_id()
+        (**value).type_id()
     }
 }
 
