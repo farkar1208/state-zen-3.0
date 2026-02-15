@@ -1,7 +1,7 @@
 use crate::blueprint::StateMachineBlueprint;
 use crate::transition::EventId;
 use crate::zone::ZoneId;
-use crate::aspect::{State, AspectId};
+use crate::aspect::State;
 use std::collections::HashMap;
 
 /// Runtime state machine instance
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn test_runtime_creation() {
-        let aspect: Aspect<String> = Aspect::new(AspectId(0), "mode", "idle".to_string());
+        let aspect = AspectBlueprint::new(AspectId(0), "mode", "idle".to_string());
 
         let mut blueprint = StateMachineBlueprint::new("test");
         blueprint.add_aspect(aspect);
@@ -153,7 +153,7 @@ mod tests {
 
     #[test]
     fn test_runtime_dispatch() {
-        let aspect: Aspect<String> = Aspect::new(AspectId(0), "mode", "idle".to_string());
+        let aspect = AspectBlueprint::new(AspectId(0), "mode", "idle".to_string());
 
         let transition = Transition::new(
             TransitionId(0),
@@ -175,8 +175,8 @@ mod tests {
 
     #[test]
     fn test_runtime_zone_activation() {
-        let mode_aspect: Aspect<String> = Aspect::new(AspectId(0), "mode", "idle".to_string());
-        let battery_aspect: Aspect<i64> = Aspect::new(AspectId(1), "battery", 100);
+        let mode_aspect = AspectBlueprint::new(AspectId(0), "mode", "idle".to_string());
+        let battery_aspect = AspectBlueprint::new(AspectId(1), "battery", 100i64);
 
         let zone = Zone::new(ZoneId(0), "low_battery", ActiveIn::aspect_lt(AspectId(1), 20));
 
@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     fn test_runtime_reset() {
-        let aspect: Aspect<String> = Aspect::new(AspectId(0), "mode", "idle".to_string());
+        let aspect = AspectBlueprint::new(AspectId(0), "mode", "idle".to_string());
 
         let transition = Transition::new(
             TransitionId(0),

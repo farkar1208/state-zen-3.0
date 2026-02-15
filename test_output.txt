@@ -1,0 +1,154 @@
+﻿cargo :     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+At line:1 char:1
++ cargo test 2>&1 | Out-File -Encoding utf8 test_output.txt; Get-Conten ...
++ ~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Finished `t...get(s) in 0.01s:String 
+   ) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+     Running unittests src\lib.rs (target\debug\deps\state_zen-6ee3f16823128497.exe)
+
+running 67 tests
+test active_in::tests::test_blueprint_always_never ... ok
+test active_in::tests::test_blueprint_aspect_bool ... ok
+test active_in::tests::test_runtime_from_blueprint ... ok
+test active_in::tests::test_blueprint_not ... ok
+test aspect::tests::test_aspect_blueprint_creation ... ok
+test active_in::tests::test_blueprint_composition ... ok
+test active_in::tests::test_runtime_legacy_api ... ok
+test aspect::tests::test_aspect_blueprint_bounds_type_mismatch ... ok
+test aspect::tests::test_aspect_blueprint_clone ... ok
+test aspect::tests::test_aspect_blueprint_get_default_as ... ok
+test aspect::tests::test_aspect_blueprint_is_type ... ok
+test active_in::tests::test_runtime_composition ... ok
+test aspect::tests::test_aspect_blueprint_type_mismatch ... ok
+test aspect::tests::test_aspect_blueprint_with_bounds ... ok
+test aspect::tests::test_aspect_bounds_blueprint_clone ... ok
+test aspect::tests::test_aspect_bounds_blueprint_is_type ... ok
+test aspect::tests::test_aspect_bounds_blueprint_type_consistency ... ok
+test aspect::tests::test_convenience_setters ... ok
+test aspect::tests::test_state_clone ... ok
+test aspect::tests::test_state_eq ... ok
+test aspect::tests::test_state_get_as_checked ... ok
+test aspect::tests::test_state_set_type_consistency ... ok
+test aspect::tests::test_state_set_type_mismatch ... ok
+test aspect::tests::test_state_set_typed ... ok
+test aspect::tests::test_state_set_typed_type_consistency ... ok
+test aspect::tests::test_state_set_typed_type_mismatch ... ok
+test aspect::tests::test_state_type_id ... ok
+test aspect::tests::test_state_type_mismatch ... ok
+test aspect::tests::test_state_with_typed_values ... ok
+test blueprint::tests::test_aspect_descriptor_from_blueprint ... ok
+test blueprint::tests::test_blueprint_add_aspect ... ok
+test blueprint::tests::test_blueprint_add_aspect_with_bounds ... ok
+test blueprint::tests::test_blueprint_add_transition ... ok
+test blueprint::tests::test_blueprint_add_zone ... ok
+test blueprint::tests::test_blueprint_builder_multiple_types ... ok
+test blueprint::tests::test_blueprint_creation ... ok
+test blueprint::tests::test_blueprint_initial_state ... ok
+test runtime::tests::test_runtime_creation ... ok
+test runtime::tests::test_runtime_dispatch ... FAILED
+test runtime::tests::test_runtime_reset ... FAILED
+test runtime::tests::test_runtime_zone_activation ... FAILED
+test transition::tests::test_transition_activation ... ok
+test transition::tests::test_transition_apply ... ok
+test transition::tests::test_transition_blueprint ... ok
+test transition::tests::test_transition_builder ... ok
+test transition::tests::test_transition_creation ... ok
+test transition::tests::test_transition_equality ... ok
+test transition::tests::test_transition_from_blueprint ... ok
+test update::tests::test_blueprint_compose ... FAILED
+test update::tests::test_blueprint_conditional ... FAILED
+test update::tests::test_blueprint_increment ... FAILED
+test update::tests::test_blueprint_noop ... ok
+test update::tests::test_blueprint_set ... ok
+test update::tests::test_runtime_compose ... FAILED
+test update::tests::test_runtime_conditional ... FAILED
+test update::tests::test_runtime_increment ... FAILED
+test update::tests::test_runtime_noop ... ok
+test update::tests::test_runtime_set ... ok
+test update::tests::test_runtime_toggle ... FAILED
+test update::tests::test_runtime_typed ... FAILED
+test zone::tests::test_zone_activation ... ok
+test zone::tests::test_zone_blueprint ... ok
+test zone::tests::test_zone_builder ... ok
+test zone::tests::test_zone_creation ... ok
+test zone::tests::test_zone_equality ... ok
+test zone::tests::test_zone_from_blueprint ... ok
+test zone::tests::test_zone_with_handlers ... ok
+
+failures:
+
+---- runtime::tests::test_runtime_dispatch stdout ----
+
+thread 'runtime::tests::test_runtime_dispatch' panicked at src\aspect.rs:333:17:
+Type mismatch for AspectId AspectId(0): existing type is TypeId(0x1aa1d58738762fe1303a6472680f5b28) (String), but attempted to set TypeId(0x6723d68c895b2603b6e02746a204cedd) (alloc::string::String)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- runtime::tests::test_runtime_reset stdout ----
+
+thread 'runtime::tests::test_runtime_reset' panicked at src\aspect.rs:333:17:
+Type mismatch for AspectId AspectId(0): existing type is TypeId(0x1aa1d58738762fe1303a6472680f5b28) (String), but attempted to set TypeId(0x6723d68c895b2603b6e02746a204cedd) (alloc::string::String)
+
+---- runtime::tests::test_runtime_zone_activation stdout ----
+
+thread 'runtime::tests::test_runtime_zone_activation' panicked at src\aspect.rs:333:17:
+Type mismatch for AspectId AspectId(1): existing type is TypeId(0x1aa1d58738762fe1303a6472680f5b28) (i64), but attempted to set TypeId(0xae6c4318bb07632e00428affbea41961) (i64)
+
+---- update::tests::test_blueprint_compose stdout ----
+
+thread 'update::tests::test_blueprint_compose' panicked at src\aspect.rs:296:17:
+Type mismatch for AspectId AspectId(1): existing type is TypeId(0xae6c4318bb07632e00428affbea41961), but attempted to set TypeId(0x1aa1d58738762fe1303a6472680f5b28)
+
+---- update::tests::test_blueprint_conditional stdout ----
+
+thread 'update::tests::test_blueprint_conditional' panicked at src\aspect.rs:296:17:
+Type mismatch for AspectId AspectId(1): existing type is TypeId(0xae6c4318bb07632e00428affbea41961), but attempted to set TypeId(0x1aa1d58738762fe1303a6472680f5b28)
+
+---- update::tests::test_blueprint_increment stdout ----
+
+thread 'update::tests::test_blueprint_increment' panicked at src\aspect.rs:296:17:
+Type mismatch for AspectId AspectId(0): existing type is TypeId(0xae6c4318bb07632e00428affbea41961), but attempted to set TypeId(0x1aa1d58738762fe1303a6472680f5b28)
+
+---- update::tests::test_runtime_compose stdout ----
+
+thread 'update::tests::test_runtime_compose' panicked at src\aspect.rs:296:17:
+Type mismatch for AspectId AspectId(0): existing type is TypeId(0xf4422d85a423c218b3f9e9b015b11d7e), but attempted to set TypeId(0x1aa1d58738762fe1303a6472680f5b28)
+
+---- update::tests::test_runtime_conditional stdout ----
+
+thread 'update::tests::test_runtime_conditional' panicked at src\aspect.rs:296:17:
+Type mismatch for AspectId AspectId(0): existing type is TypeId(0xae6c4318bb07632e00428affbea41961), but attempted to set TypeId(0x1aa1d58738762fe1303a6472680f5b28)
+
+---- update::tests::test_runtime_increment stdout ----
+
+thread 'update::tests::test_runtime_increment' panicked at src\aspect.rs:296:17:
+Type mismatch for AspectId AspectId(0): existing type is TypeId(0xae6c4318bb07632e00428affbea41961), but attempted to set TypeId(0x1aa1d58738762fe1303a6472680f5b28)
+
+---- update::tests::test_runtime_toggle stdout ----
+
+thread 'update::tests::test_runtime_toggle' panicked at src\aspect.rs:296:17:
+Type mismatch for AspectId AspectId(0): existing type is TypeId(0xf4422d85a423c218b3f9e9b015b11d7e), but attempted to set TypeId(0x1aa1d58738762fe1303a6472680f5b28)
+
+---- update::tests::test_runtime_typed stdout ----
+
+thread 'update::tests::test_runtime_typed' panicked at src\aspect.rs:296:17:
+Type mismatch for AspectId AspectId(0): existing type is TypeId(0x56ced5e4a15bd89050bb9674fa2df013), but attempted to set TypeId(0x1aa1d58738762fe1303a6472680f5b28)
+
+error: test failed, to rerun pass `--lib`
+
+failures:
+    runtime::tests::test_runtime_dispatch
+    runtime::tests::test_runtime_reset
+    runtime::tests::test_runtime_zone_activation
+    update::tests::test_blueprint_compose
+    update::tests::test_blueprint_conditional
+    update::tests::test_blueprint_increment
+    update::tests::test_runtime_compose
+    update::tests::test_runtime_conditional
+    update::tests::test_runtime_increment
+    update::tests::test_runtime_toggle
+    update::tests::test_runtime_typed
+
+test result: FAILED. 56 passed; 11 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

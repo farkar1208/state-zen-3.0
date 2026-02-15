@@ -1,4 +1,4 @@
-use state_zen::{AspectId, Aspect, Zone, ZoneId, Transition, TransitionId, StateMachineRuntime};
+use state_zen::{AspectId, AspectBlueprint, Zone, ZoneId, Transition, TransitionId, StateMachineRuntime};
 use state_zen::transition::EventId;
 use state_zen::active_in::ActiveIn;
 use state_zen::update::Update;
@@ -6,20 +6,20 @@ use state_zen::StateMachineBlueprint;
 
 fn main() {
     // Define state aspects (dimensions of the state vector)
-    let mode_aspect: Aspect<String> = Aspect::new(
+    let mode_aspect = AspectBlueprint::new(
         AspectId(0),
         "mode",
         "idle".to_string(),
     );
 
-    let battery_aspect: Aspect<i64> = Aspect::new(
+    let battery_aspect = AspectBlueprint::new(
         AspectId(1),
         "battery",
-        100,
+        100i64,
     )
-    .with_range(0, 100);
+    .with_range(0i64, 100i64);
 
-    let is_charging_aspect: Aspect<bool> = Aspect::new(
+    let is_charging_aspect = AspectBlueprint::new(
         AspectId(2),
         "is_charging",
         false,
@@ -29,7 +29,7 @@ fn main() {
     let charging_zone = Zone::new(
         ZoneId(0),
         "charging_zone",
-        ActiveIn::aspect_eq_typed(AspectId(2), true),
+        ActiveIn::aspect_bool(AspectId(2), true),
     )
     .with_on_enter(|| {
         println!("🔋 Started charging - entering charging zone");
@@ -42,7 +42,7 @@ fn main() {
     let low_battery_zone = Zone::new(
         ZoneId(1),
         "low_battery_zone",
-        ActiveIn::aspect_lt_typed(AspectId(1), 20),
+        ActiveIn::aspect_lt(AspectId(1), 20i64),
     )
     .with_on_enter(|| {
         println!("⚠️  Low battery warning!");
@@ -55,7 +55,7 @@ fn main() {
     let running_zone = Zone::new(
         ZoneId(2),
         "running_zone",
-        ActiveIn::aspect_eq_typed(AspectId(0), "running".to_string()),
+        ActiveIn::aspect_string_eq(AspectId(0), "running"),
     )
     .with_on_enter(|| {
         println!("▶️  System started");
@@ -68,9 +68,9 @@ fn main() {
     let start_transition = Transition::new(
         TransitionId(0),
         "start",
-        ActiveIn::aspect_eq_typed(AspectId(0), "idle".to_string()),
+        ActiveIn::aspect_string_eq(AspectId(0), "idle"),
         EventId::new("start_button"),
-        Update::set(AspectId(0), Box::new("running".to_string())),
+        Update::set_string(AspectId(0), "running"),
     )
     .with_on_tran(|| {
         println!("🎯 Start button pressed - transitioning to running");
@@ -79,9 +79,9 @@ fn main() {
     let stop_transition = Transition::new(
         TransitionId(1),
         "stop",
-        ActiveIn::aspect_eq_typed(AspectId(0), "running".to_string()),
+        ActiveIn::aspect_string_eq(AspectId(0), "running"),
         EventId::new("stop_button"),
-        Update::set(AspectId(0), Box::new("idle".to_string())),
+        Update::set_string(AspectId(0), "idle"),
     )
     .with_on_tran(|| {
         println!("⏹️  Stop button pressed - transitioning to idle");
@@ -92,7 +92,7 @@ fn main() {
         "charge",
         ActiveIn::always(),
         EventId::new("charge"),
-        Update::set(AspectId(2), Box::new(true)),
+        Update::set_bool(AspectId(2), true),
     )
     .with_on_tran(|| {
         println!("🔌 Charger connected");
@@ -103,7 +103,7 @@ fn main() {
         "uncharge",
         ActiveIn::always(),
         EventId::new("uncharge"),
-        Update::set(AspectId(2), Box::new(false)),
+        Update::set_bool(AspectId(2), false),
     )
     .with_on_tran(|| {
         println!("🔌 Charger disconnected");
@@ -112,7 +112,7 @@ fn main() {
     let consume_battery_transition = Transition::new(
         TransitionId(4),
         "consume_battery",
-        ActiveIn::aspect_eq_typed(AspectId(0), "running".to_string()),
+        ActiveIn::aspect_string_eq(AspectId(0), "running"),
         EventId::new("tick"),
         Update::compose(vec![
             Update::conditional_else(
@@ -125,8 +125,8 @@ fn main() {
             Update::conditional(
                 |s| s.get_as::<i64>(AspectId(1)).map_or(false, |&v| v <= 0),
                 Update::compose(vec![
-                    Update::set(AspectId(0), Box::new("idle".to_string())),
-                    Update::set(AspectId(1), Box::new(0i64)),
+                    Update::set_string(AspectId(0), "idle"),
+                    Update::set_int(AspectId(1), 0),
                 ]),
             ),
         ]),
@@ -148,7 +148,7 @@ fn main() {
 
     // Create runtime state machine instance
     let mut runtime = StateMachineRuntime::new(blueprint);
-    
+
     println!("\n📍 Initial State:");
     print_state(&runtime);
 
@@ -164,20 +164,20 @@ fn main() {
     // Consume battery
     runtime.dispatch_str("tick");
     print_runtime_state(&runtime);
-    
+
     runtime.dispatch_str("tick");
     print_runtime_state(&runtime);
-    
+
     runtime.dispatch_str("tick");
     print_runtime_state(&runtime);
 
     // Connect charger
     runtime.dispatch_str("charge");
     print_runtime_state(&runtime);
-    
+
     runtime.dispatch_str("tick");
     print_runtime_state(&runtime);
-    
+
     runtime.dispatch_str("tick");
     print_runtime_state(&runtime);
 
@@ -188,10 +188,10 @@ fn main() {
     // Continue running until low battery
     runtime.dispatch_str("tick");
     print_runtime_state(&runtime);
-    
+
     runtime.dispatch_str("tick");
     print_runtime_state(&runtime);
-    
+
     runtime.dispatch_str("tick");
     print_runtime_state(&runtime);
 
@@ -223,12 +223,12 @@ fn print_state(runtime: &StateMachineRuntime) {
 
 fn print_runtime_state(runtime: &StateMachineRuntime) {
     println!("📨 Event dispatched");
-    
+
     let active_zones = runtime.active_zones();
     if !active_zones.is_empty() {
         println!("  Active zones: {}", active_zones.iter().map(|id| format!("{:?}", id)).collect::<Vec<_>>().join(", "));
     }
-    
+
     println!("  Current State:");
     print_state(runtime);
     println!();

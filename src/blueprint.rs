@@ -1,6 +1,6 @@
-use crate::aspect::{AspectId, State, Aspect};
-use crate::zone::{Zone, ZoneId};
-use crate::transition::{EventId, Transition, TransitionId};
+use crate::aspect::{AspectId, State, AspectBlueprint};
+use crate::zone::Zone;
+use crate::transition::{EventId, Transition};
 use std::any::{Any, TypeId};
 use std::collections::{HashMap, HashSet};
 
@@ -27,6 +27,24 @@ impl Clone for AspectDescriptor {
             Box::new(s.clone())
         } else if let Some(i) = self.default_value.downcast_ref::<i32>() {
             Box::new(*i)
+        } else if let Some(u) = self.default_value.downcast_ref::<usize>() {
+            Box::new(*u)
+        } else if let Some(u) = self.default_value.downcast_ref::<u32>() {
+            Box::new(*u)
+        } else if let Some(u) = self.default_value.downcast_ref::<u64>() {
+            Box::new(*u)
+        } else if let Some(c) = self.default_value.downcast_ref::<char>() {
+            Box::new(*c)
+        } else if let Some(v) = self.default_value.downcast_ref::<Vec<u8>>() {
+            Box::new(v.clone())
+        } else if let Some(v) = self.default_value.downcast_ref::<Vec<String>>() {
+            Box::new(v.clone())
+        } else if let Some(v) = self.default_value.downcast_ref::<Vec<i64>>() {
+            Box::new(v.clone())
+        } else if let Some(v) = self.default_value.downcast_ref::<Vec<f64>>() {
+            Box::new(v.clone())
+        } else if let Some(v) = self.default_value.downcast_ref::<Vec<bool>>() {
+            Box::new(v.clone())
         } else {
             Box::new(())
         };
@@ -43,17 +61,14 @@ impl Clone for AspectDescriptor {
 }
 
 impl AspectDescriptor {
-    pub fn new<T>(aspect: &Aspect<T>) -> Self
-    where
-        T: Any + Send + Sync + Clone,
-    {
+    pub fn from_blueprint(blueprint: &AspectBlueprint) -> Self {
         Self {
-            id: aspect.id,
-            name: aspect.name.clone(),
-            type_id: TypeId::of::<T>(),
-            default_value: Box::new(aspect.default_value.clone()),
-            has_min: aspect.bounds.min.is_some(),
-            has_max: aspect.bounds.max.is_some(),
+            id: blueprint.id,
+            name: blueprint.name.clone(),
+            type_id: blueprint.default_type_id,
+            default_value: crate::aspect::clone_any(&blueprint.default_value),
+            has_min: blueprint.bounds.as_ref().map(|b| b.min_value.is_some()).unwrap_or(false),
+            has_max: blueprint.bounds.as_ref().map(|b| b.max_value.is_some()).unwrap_or(false),
         }
     }
 }
@@ -96,13 +111,10 @@ impl StateMachineBlueprint {
         }
     }
 
-    /// Add a state aspect to the blueprint (generic version)
-    pub fn add_aspect<T>(&mut self, aspect: Aspect<T>) -> &mut Self
-    where
-        T: Any + Send + Sync + Clone,
-    {
-        let descriptor = AspectDescriptor::new(&aspect);
-        self.aspects.insert(aspect.id, descriptor);
+    /// Add a state aspect to the blueprint using AspectBlueprint
+    pub fn add_aspect(&mut self, blueprint: AspectBlueprint) -> &mut Self {
+        let descriptor = AspectDescriptor::from_blueprint(&blueprint);
+        self.aspects.insert(blueprint.id, descriptor);
         self
     }
 
@@ -158,6 +170,24 @@ impl StateMachineBlueprint {
                 Box::new(s.clone())
             } else if let Some(i) = descriptor.default_value.downcast_ref::<i32>() {
                 Box::new(*i)
+            } else if let Some(u) = descriptor.default_value.downcast_ref::<usize>() {
+                Box::new(*u)
+            } else if let Some(u) = descriptor.default_value.downcast_ref::<u32>() {
+                Box::new(*u)
+            } else if let Some(u) = descriptor.default_value.downcast_ref::<u64>() {
+                Box::new(*u)
+            } else if let Some(c) = descriptor.default_value.downcast_ref::<char>() {
+                Box::new(*c)
+            } else if let Some(v) = descriptor.default_value.downcast_ref::<Vec<u8>>() {
+                Box::new(v.clone())
+            } else if let Some(v) = descriptor.default_value.downcast_ref::<Vec<String>>() {
+                Box::new(v.clone())
+            } else if let Some(v) = descriptor.default_value.downcast_ref::<Vec<i64>>() {
+                Box::new(v.clone())
+            } else if let Some(v) = descriptor.default_value.downcast_ref::<Vec<f64>>() {
+                Box::new(v.clone())
+            } else if let Some(v) = descriptor.default_value.downcast_ref::<Vec<bool>>() {
+                Box::new(v.clone())
             } else {
                 continue;
             };
@@ -171,8 +201,9 @@ impl StateMachineBlueprint {
 mod tests {
     use super::*;
     use crate::active_in::ActiveIn;
-    
     use crate::update::Update;
+    use crate::zone::ZoneId;
+    use crate::transition::TransitionId;
 
     #[test]
     fn test_blueprint_creation() {
@@ -185,12 +216,12 @@ mod tests {
     }
 
     #[test]
-    fn test_blueprint_add_aspect_generic() {
+    fn test_blueprint_add_aspect() {
         let mut blueprint = StateMachineBlueprint::new("test_machine");
 
-        let aspect: Aspect<i32> = Aspect::new(AspectId(0), "counter", 0);
+        let aspect_blueprint = AspectBlueprint::new(AspectId(0), "counter", 0i32);
 
-        blueprint.add_aspect(aspect);
+        blueprint.add_aspect(aspect_blueprint);
 
         assert_eq!(blueprint.aspects().count(), 1);
     }
@@ -199,10 +230,10 @@ mod tests {
     fn test_blueprint_add_aspect_with_bounds() {
         let mut blueprint = StateMachineBlueprint::new("test_machine");
 
-        let aspect: Aspect<i32> = Aspect::new(AspectId(0), "counter", 50)
+        let aspect_blueprint = AspectBlueprint::new(AspectId(0), "counter", 50i32)
             .with_range(0, 100);
 
-        blueprint.add_aspect(aspect);
+        blueprint.add_aspect(aspect_blueprint);
 
         let descriptor = blueprint.get_aspect(AspectId(0)).unwrap();
         assert!(descriptor.has_min);
@@ -242,8 +273,8 @@ mod tests {
     fn test_blueprint_initial_state() {
         let mut blueprint = StateMachineBlueprint::new("test_machine");
 
-        let aspect1: Aspect<String> = Aspect::new(AspectId(0), "mode", "idle".to_string());
-        let aspect2: Aspect<i64> = Aspect::new(AspectId(1), "count", 0i64);
+        let aspect1 = AspectBlueprint::new(AspectId(0), "mode", "idle".to_string());
+        let aspect2 = AspectBlueprint::new(AspectId(1), "count", 0i64);
 
         blueprint.add_aspect(aspect1);
         blueprint.add_aspect(aspect2);
@@ -256,10 +287,10 @@ mod tests {
 
     #[test]
     fn test_blueprint_builder_multiple_types() {
-        let aspect1: Aspect<i32> = Aspect::new(AspectId(0), "count", 0);
-        let aspect2: Aspect<f64> = Aspect::new(AspectId(1), "temperature", 20.0)
+        let aspect1 = AspectBlueprint::new(AspectId(0), "count", 0i32);
+        let aspect2 = AspectBlueprint::new(AspectId(1), "temperature", 20.0f64)
             .with_range(0.0, 100.0);
-        let aspect3: Aspect<bool> = Aspect::new(AspectId(2), "enabled", true);
+        let aspect3 = AspectBlueprint::new(AspectId(2), "enabled", true);
 
         let mut blueprint = StateMachineBlueprint::new("test_machine");
         blueprint.add_aspect(aspect1);
@@ -267,5 +298,19 @@ mod tests {
         blueprint.add_aspect(aspect3);
 
         assert_eq!(blueprint.aspects().count(), 3);
+    }
+
+    #[test]
+    fn test_aspect_descriptor_from_blueprint() {
+        let blueprint = AspectBlueprint::new(AspectId(0), "counter", 42i32)
+            .with_range(0, 100);
+
+        let descriptor = AspectDescriptor::from_blueprint(&blueprint);
+
+        assert_eq!(descriptor.id, AspectId(0));
+        assert_eq!(descriptor.name, "counter");
+        assert_eq!(descriptor.type_id, TypeId::of::<i32>());
+        assert!(descriptor.has_min);
+        assert!(descriptor.has_max);
     }
 }
