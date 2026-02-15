@@ -46,14 +46,53 @@ impl<T> Default for Bounds<T> {
 }
 
 /// Type-erased representation of aspect constraints for the blueprint
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct AspectBoundsBlueprint {
     pub type_id: TypeId,
     pub type_name: String,
-    /// Serialized min value as bytes
-    pub min_bytes: Option<Vec<u8>>,
-    /// Serialized max value as bytes
-    pub max_bytes: Option<Vec<u8>>,
+    /// Min value as Any (type-erased)
+    pub min_value: Option<Box<dyn Any + Send + Sync>>,
+    /// Max value as Any (type-erased)
+    pub max_value: Option<Box<dyn Any + Send + Sync>>,
+}
+
+impl Clone for AspectBoundsBlueprint {
+    fn clone(&self) -> Self {
+        Self {
+            type_id: self.type_id,
+            type_name: self.type_name.clone(),
+            min_value: self.min_value.as_ref().map(|v| {
+                if let Some(b) = v.downcast_ref::<bool>() {
+                    Box::new(*b) as Box<dyn Any + Send + Sync>
+                } else if let Some(i) = v.downcast_ref::<i64>() {
+                    Box::new(*i) as Box<dyn Any + Send + Sync>
+                } else if let Some(f) = v.downcast_ref::<f64>() {
+                    Box::new(*f) as Box<dyn Any + Send + Sync>
+                } else if let Some(s) = v.downcast_ref::<String>() {
+                    Box::new(s.clone()) as Box<dyn Any + Send + Sync>
+                } else if let Some(i) = v.downcast_ref::<i32>() {
+                    Box::new(*i) as Box<dyn Any + Send + Sync>
+                } else {
+                    Box::new(()) as Box<dyn Any + Send + Sync>
+                }
+            }),
+            max_value: self.max_value.as_ref().map(|v| {
+                if let Some(b) = v.downcast_ref::<bool>() {
+                    Box::new(*b) as Box<dyn Any + Send + Sync>
+                } else if let Some(i) = v.downcast_ref::<i64>() {
+                    Box::new(*i) as Box<dyn Any + Send + Sync>
+                } else if let Some(f) = v.downcast_ref::<f64>() {
+                    Box::new(*f) as Box<dyn Any + Send + Sync>
+                } else if let Some(s) = v.downcast_ref::<String>() {
+                    Box::new(s.clone()) as Box<dyn Any + Send + Sync>
+                } else if let Some(i) = v.downcast_ref::<i32>() {
+                    Box::new(*i) as Box<dyn Any + Send + Sync>
+                } else {
+                    Box::new(()) as Box<dyn Any + Send + Sync>
+                }
+            }),
+        }
+    }
 }
 
 impl AspectBoundsBlueprint {
@@ -61,24 +100,24 @@ impl AspectBoundsBlueprint {
         Self {
             type_id: TypeId::of::<T>(),
             type_name: std::any::type_name::<T>().to_string(),
-            min_bytes: None,
-            max_bytes: None,
+            min_value: None,
+            max_value: None,
         }
     }
 
-    pub fn with_min<T: 'static>(mut self, min: T) -> Self {
-        self.min_bytes = Some(serialize_value(&min));
+    pub fn with_min<T: 'static + Send + Sync>(mut self, min: T) -> Self {
+        self.min_value = Some(Box::new(min));
         self
     }
 
-    pub fn with_max<T: 'static>(mut self, max: T) -> Self {
-        self.max_bytes = Some(serialize_value(&max));
+    pub fn with_max<T: 'static + Send + Sync>(mut self, max: T) -> Self {
+        self.max_value = Some(Box::new(max));
         self
     }
 
-    pub fn with_range<T: 'static>(mut self, min: T, max: T) -> Self {
-        self.min_bytes = Some(serialize_value(&min));
-        self.max_bytes = Some(serialize_value(&max));
+    pub fn with_range<T: 'static + Send + Sync>(mut self, min: T, max: T) -> Self {
+        self.min_value = Some(Box::new(min));
+        self.max_value = Some(Box::new(max));
         self
     }
 }
@@ -87,16 +126,41 @@ impl AspectBoundsBlueprint {
 ///
 /// AspectBlueprint describes an orthogonal dimension of the state vector
 /// without including validation logic or runtime behavior.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct AspectBlueprint {
     pub id: AspectId,
     pub name: String,
-    /// Type-erased default value
-    pub default_value_bytes: Vec<u8>,
+    /// Default value as Any (type-erased)
+    pub default_value: Box<dyn Any + Send + Sync>,
     pub default_type_id: TypeId,
     pub default_type_name: String,
     /// Type-erased bounds
     pub bounds: Option<AspectBoundsBlueprint>,
+}
+
+impl Clone for AspectBlueprint {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            name: self.name.clone(),
+            default_value: if let Some(b) = self.default_value.downcast_ref::<bool>() {
+                Box::new(*b) as Box<dyn Any + Send + Sync>
+            } else if let Some(i) = self.default_value.downcast_ref::<i64>() {
+                Box::new(*i) as Box<dyn Any + Send + Sync>
+            } else if let Some(f) = self.default_value.downcast_ref::<f64>() {
+                Box::new(*f) as Box<dyn Any + Send + Sync>
+            } else if let Some(s) = self.default_value.downcast_ref::<String>() {
+                Box::new(s.clone()) as Box<dyn Any + Send + Sync>
+            } else if let Some(i) = self.default_value.downcast_ref::<i32>() {
+                Box::new(*i) as Box<dyn Any + Send + Sync>
+            } else {
+                Box::new(()) as Box<dyn Any + Send + Sync>
+            },
+            default_type_id: self.default_type_id,
+            default_type_name: self.default_type_name.clone(),
+            bounds: self.bounds.clone(),
+        }
+    }
 }
 
 impl AspectBlueprint {
@@ -109,7 +173,7 @@ impl AspectBlueprint {
         Self {
             id,
             name: name.into(),
-            default_value_bytes: serialize_value(&default_value),
+            default_value: Box::new(default_value),
             default_type_id: TypeId::of::<T>(),
             default_type_name: std::any::type_name::<T>().to_string(),
             bounds: None,
@@ -117,109 +181,30 @@ impl AspectBlueprint {
     }
 
     /// Set bounds for this aspect
-    pub fn with_bounds<T: 'static>(mut self, bounds: AspectBoundsBlueprint) -> Self {
+    pub fn with_bounds(mut self, bounds: AspectBoundsBlueprint) -> Self {
         self.bounds = Some(bounds);
         self
     }
 
     /// Set min and max bounds (convenience method)
-    pub fn with_range<T: 'static>(mut self, min: T, max: T) -> Self {
+    pub fn with_range<T: 'static + Send + Sync>(mut self, min: T, max: T) -> Self {
         let bounds = AspectBoundsBlueprint::new::<T>().with_range(min, max);
         self.bounds = Some(bounds);
         self
     }
 
     /// Set min bound only
-    pub fn with_min<T: 'static>(mut self, min: T) -> Self {
+    pub fn with_min<T: 'static + Send + Sync>(mut self, min: T) -> Self {
         let bounds = AspectBoundsBlueprint::new::<T>().with_min(min);
         self.bounds = Some(bounds);
         self
     }
 
     /// Set max bound only
-    pub fn with_max<T: 'static>(mut self, max: T) -> Self {
+    pub fn with_max<T: 'static + Send + Sync>(mut self, max: T) -> Self {
         let bounds = AspectBoundsBlueprint::new::<T>().with_max(max);
         self.bounds = Some(bounds);
         self
-    }
-}
-
-/// Builder for constructing AspectBlueprint instances
-pub struct AspectBlueprintBuilder {
-    id: Option<AspectId>,
-    name: Option<String>,
-    default_value_bytes: Option<Vec<u8>>,
-    default_type_id: Option<TypeId>,
-    default_type_name: Option<String>,
-    bounds: Option<AspectBoundsBlueprint>,
-}
-
-impl AspectBlueprintBuilder {
-    pub fn new() -> Self {
-        Self {
-            id: None,
-            name: None,
-            default_value_bytes: None,
-            default_type_id: None,
-            default_type_name: None,
-            bounds: None,
-        }
-    }
-
-    pub fn id(mut self, id: AspectId) -> Self {
-        self.id = Some(id);
-        self
-    }
-
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = Some(name.into());
-        self
-    }
-
-    pub fn default_value<T: Any + Send + Sync + 'static>(mut self, value: T) -> Self {
-        self.default_value_bytes = Some(serialize_value(&value));
-        self.default_type_id = Some(TypeId::of::<T>());
-        self.default_type_name = Some(std::any::type_name::<T>().to_string());
-        self
-    }
-
-    pub fn bounds(mut self, bounds: AspectBoundsBlueprint) -> Self {
-        self.bounds = Some(bounds);
-        self
-    }
-
-    pub fn build(self) -> Result<AspectBlueprint, String> {
-        let id = self.id.ok_or("Aspect id is required")?;
-        let name = self.name.ok_or("Aspect name is required")?;
-        let default_value_bytes = self.default_value_bytes.ok_or("Default value is required")?;
-        let default_type_id = self.default_type_id.ok_or("Default type is required")?;
-        let default_type_name = self.default_type_name.ok_or("Default type name is required")?;
-
-        Ok(AspectBlueprint {
-            id,
-            name,
-            default_value_bytes,
-            default_type_id,
-            default_type_name,
-            bounds: self.bounds,
-        })
-    }
-}
-
-impl Default for AspectBlueprintBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Serialize a value to bytes
-fn serialize_value<T: ?Sized>(value: &T) -> Vec<u8> {
-    unsafe {
-        let bytes = std::slice::from_raw_parts(
-            value as *const T as *const u8,
-            std::mem::size_of_val(value),
-        );
-        bytes.to_vec()
     }
 }
 
@@ -273,32 +258,32 @@ where
             ));
         }
 
-        // Deserialize default value
-        let default_value = deserialize_bytes::<T>(&blueprint.default_value_bytes)
-            .ok_or("Failed to deserialize default value")?
-            .clone();
+        // Extract default value
+        let default_value = blueprint.default_value
+            .downcast::<T>()
+            .map(|boxed| *boxed)
+            .unwrap_or_else(|_| panic!("Failed to extract default value"));
 
-        // Deserialize bounds if present
+        // Extract bounds if present
         let bounds = if let Some(bounds_blueprint) = blueprint.bounds {
-            // Check if both min and max are present
-            let has_both = bounds_blueprint.min_bytes.is_some() && bounds_blueprint.max_bytes.is_some();
-            let has_min = bounds_blueprint.min_bytes.is_some();
-            let has_max = bounds_blueprint.max_bytes.is_some();
+            let has_both = bounds_blueprint.min_value.is_some() && bounds_blueprint.max_value.is_some();
+            let has_min = bounds_blueprint.min_value.is_some();
+            let has_max = bounds_blueprint.max_value.is_some();
 
             if has_both {
-                let min_bytes = bounds_blueprint.min_bytes.unwrap();
-                let max_bytes = bounds_blueprint.max_bytes.unwrap();
-                let min = deserialize_bytes::<T>(&min_bytes).ok_or("Failed to deserialize min bound")?;
-                let max = deserialize_bytes::<T>(&max_bytes).ok_or("Failed to deserialize max bound")?;
-                Bounds::new().with_range(min.clone(), max.clone())
+                let min_value = bounds_blueprint.min_value.unwrap();
+                let max_value = bounds_blueprint.max_value.unwrap();
+                let min = min_value.downcast::<T>().map(|boxed| *boxed).unwrap_or_else(|_| panic!("Failed to extract min bound"));
+                let max = max_value.downcast::<T>().map(|boxed| *boxed).unwrap_or_else(|_| panic!("Failed to extract max bound"));
+                Bounds::new().with_range(min, max)
             } else if has_min {
-                let min_bytes = bounds_blueprint.min_bytes.unwrap();
-                let min = deserialize_bytes::<T>(&min_bytes).ok_or("Failed to deserialize min bound")?;
-                Bounds::new().with_min(min.clone())
+                let min_value = bounds_blueprint.min_value.unwrap();
+                let min = min_value.downcast::<T>().map(|boxed| *boxed).unwrap_or_else(|_| panic!("Failed to extract min bound"));
+                Bounds::new().with_min(min)
             } else if has_max {
-                let max_bytes = bounds_blueprint.max_bytes.unwrap();
-                let max = deserialize_bytes::<T>(&max_bytes).ok_or("Failed to deserialize max bound")?;
-                Bounds::new().with_max(max.clone())
+                let max_value = bounds_blueprint.max_value.unwrap();
+                let max = max_value.downcast::<T>().map(|boxed| *boxed).unwrap_or_else(|_| panic!("Failed to extract max bound"));
+                Bounds::new().with_max(max)
             } else {
                 Bounds::new()
             }
@@ -358,16 +343,6 @@ where
     }
 }
 
-/// Deserialize bytes back to a value reference
-fn deserialize_bytes<T>(bytes: &[u8]) -> Option<&T> {
-    if bytes.len() != std::mem::size_of::<T>() {
-        return None;
-    }
-    unsafe {
-        Some(&*(bytes.as_ptr() as *const T))
-    }
-}
-
 // ============================================================================
 // STATE - Runtime state container
 // ============================================================================
@@ -381,11 +356,8 @@ pub struct State {
 
 impl Clone for State {
     fn clone(&self) -> Self {
-        // Since we can't clone Box<dyn Any> directly, we create a new State
-        // and use a more efficient approach - copy only what we need
         let mut new_state = State::new();
         for (key, value) in &self.values {
-            // Use reflection to clone common types
             if let Some(b) = value.downcast_ref::<bool>() {
                 new_state.values.insert(*key, Box::new(*b));
             } else if let Some(i) = value.downcast_ref::<i64>() {
@@ -397,7 +369,6 @@ impl Clone for State {
             } else if let Some(i) = value.downcast_ref::<i32>() {
                 new_state.values.insert(*key, Box::new(*i));
             }
-            // For other types, we'd need a trait-based approach
         }
         new_state
     }
@@ -410,48 +381,35 @@ impl PartialEq for State {
         }
         for (key, value) in &self.values {
             if let Some(other_value) = other.values.get(key) {
-                // Compare by TypeId first
                 if value.type_id() != other_value.type_id() {
                     return false;
                 }
-                // For common types, do actual comparison
                 if let (Some(a), Some(b)) = (
                     value.downcast_ref::<bool>(),
                     other_value.downcast_ref::<bool>(),
                 ) {
-                    if a != b {
-                        return false;
-                    }
+                    if a != b { return false; }
                 } else if let (Some(a), Some(b)) = (
                     value.downcast_ref::<i64>(),
                     other_value.downcast_ref::<i64>(),
                 ) {
-                    if a != b {
-                        return false;
-                    }
+                    if a != b { return false; }
                 } else if let (Some(a), Some(b)) = (
                     value.downcast_ref::<f64>(),
                     other_value.downcast_ref::<f64>(),
                 ) {
-                    if a != b {
-                        return false;
-                    }
+                    if a != b { return false; }
                 } else if let (Some(a), Some(b)) = (
                     value.downcast_ref::<String>(),
                     other_value.downcast_ref::<String>(),
                 ) {
-                    if a != b {
-                        return false;
-                    }
+                    if a != b { return false; }
                 } else if let (Some(a), Some(b)) = (
                     value.downcast_ref::<i32>(),
                     other_value.downcast_ref::<i32>(),
                 ) {
-                    if a != b {
-                        return false;
-                    }
+                    if a != b { return false; }
                 }
-                // For other types, we can't compare, so assume equal if TypeId matches
             } else {
                 return false;
             }
@@ -588,7 +546,6 @@ pub fn any_value<T: Any + Send + Sync>(value: T) -> Box<dyn Any + Send + Sync> {
 mod tests {
     use super::*;
 
-    // Example user-defined struct
     #[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
     struct Temperature {
         celsius: i32,
@@ -606,7 +563,6 @@ mod tests {
         }
     }
 
-    // Example user-defined struct without PartialOrd
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct Status {
         code: u32,
@@ -642,23 +598,8 @@ mod tests {
         assert!(blueprint.bounds.is_some());
         let bounds = blueprint.bounds.unwrap();
         assert_eq!(bounds.type_id, TypeId::of::<i32>());
-        assert!(bounds.min_bytes.is_some());
-        assert!(bounds.max_bytes.is_some());
-    }
-
-    #[test]
-    fn test_aspect_blueprint_builder() {
-        let id = AspectId(0);
-        let blueprint = AspectBlueprintBuilder::new()
-            .id(id)
-            .name("counter")
-            .default_value(42i32)
-            .bounds(AspectBoundsBlueprint::new::<i32>().with_range(0, 100))
-            .build()
-            .unwrap();
-
-        assert_eq!(blueprint.id, id);
-        assert_eq!(blueprint.name, "counter");
+        assert!(bounds.min_value.is_some());
+        assert!(bounds.max_value.is_some());
     }
 
     #[test]
@@ -762,7 +703,6 @@ mod tests {
             .set_typed(id, 42i32)
             .build();
 
-        // Trying to get as wrong type returns None
         assert_eq!(state.get_as::<String>(id), None);
         assert_eq!(state.get_as::<bool>(id), None);
     }
@@ -830,7 +770,6 @@ mod tests {
         let id = AspectId(0);
         let blueprint = AspectBlueprint::new(id, "counter", 42i32);
 
-        // Trying to create Aspect<f64> from i32 blueprint should fail
         let result: Result<Aspect<f64>, _> = Aspect::from_blueprint(blueprint);
         assert!(result.is_err());
     }

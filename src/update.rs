@@ -19,7 +19,7 @@ pub enum UpdateBlueprint {
         value: BlueprintValue,
     },
 
-    /// Modify an aspect's value using a transformation function (type-erased)
+    /// Modify an aspect's value using a transformation function
     Modify {
         aspect_id: AspectId,
         type_id: std::any::TypeId,
@@ -44,10 +44,6 @@ pub enum BlueprintValue {
     Integer(i64),
     Float(f64),
     String(String),
-    Typed {
-        type_id: std::any::TypeId,
-        bytes: Vec<u8>,
-    },
 }
 
 /// Modify operation types
@@ -61,11 +57,6 @@ pub enum ModifyOp {
     Add(i64),
     /// Toggle boolean
     Toggle,
-    /// Custom modification (type-erased)
-    Custom {
-        op_type: String, // For identification
-        bytes: Vec<u8>,
-    },
 }
 
 impl UpdateBlueprint {
@@ -147,21 +138,6 @@ impl UpdateBlueprint {
         }
     }
 
-    /// Generic modify for any type
-    pub fn modify_typed<T>(aspect_id: AspectId) -> Self
-    where
-        T: Any + Send + Sync + Clone + 'static,
-    {
-        UpdateBlueprint::Modify {
-            aspect_id,
-            type_id: std::any::TypeId::of::<T>(),
-            op: ModifyOp::Custom {
-                op_type: std::any::type_name::<T>().to_string(),
-                bytes: Vec::new(), // Placeholder for serialized closure
-            },
-        }
-    }
-
     /// Compose multiple updates to apply sequentially
     pub fn compose(updates: Vec<UpdateBlueprint>) -> Self {
         if updates.is_empty() {
@@ -196,99 +172,6 @@ impl UpdateBlueprint {
             then_update: Box::new(then_update),
             else_update: Some(Box::new(else_update)),
         }
-    }
-
-    /// Count the total number of AST nodes in this update tree
-    pub fn node_count(&self) -> usize {
-        match self {
-            UpdateBlueprint::Noop => 1,
-            UpdateBlueprint::Set { .. } => 1,
-            UpdateBlueprint::Modify { .. } => 1,
-            UpdateBlueprint::Compose(updates) => {
-                1 + updates.iter().map(|u| u.node_count()).sum::<usize>()
-            }
-            UpdateBlueprint::Conditional {
-                predicate,
-                then_update,
-                else_update,
-            } => {
-                1 + predicate.node_count()
-                    + then_update.node_count()
-                    + else_update.as_ref().map(|u| u.node_count()).unwrap_or(0)
-            }
-        }
-    }
-}
-
-// ============================================================================
-// BUILDER FOR UPDATE BLUEPRINT
-// ============================================================================
-
-/// Builder for constructing UpdateBlueprint instances
-pub struct UpdateBlueprintBuilder {
-    operations: Vec<UpdateBlueprint>,
-}
-
-impl UpdateBlueprintBuilder {
-    pub fn new() -> Self {
-        Self {
-            operations: Vec::new(),
-        }
-    }
-
-    pub fn set(mut self, aspect_id: AspectId, value: BlueprintValue) -> Self {
-        self.operations.push(UpdateBlueprint::set(aspect_id, value));
-        self
-    }
-
-    pub fn set_bool(mut self, aspect_id: AspectId, value: bool) -> Self {
-        self.operations.push(UpdateBlueprint::set_bool(aspect_id, value));
-        self
-    }
-
-    pub fn set_int(mut self, aspect_id: AspectId, value: i64) -> Self {
-        self.operations.push(UpdateBlueprint::set_int(aspect_id, value));
-        self
-    }
-
-    pub fn set_float(mut self, aspect_id: AspectId, value: f64) -> Self {
-        self.operations.push(UpdateBlueprint::set_float(aspect_id, value));
-        self
-    }
-
-    pub fn set_string(mut self, aspect_id: AspectId, value: impl Into<String>) -> Self {
-        self.operations.push(UpdateBlueprint::set_string(aspect_id, value));
-        self
-    }
-
-    pub fn increment(mut self, aspect_id: AspectId) -> Self {
-        self.operations.push(UpdateBlueprint::increment(aspect_id));
-        self
-    }
-
-    pub fn decrement(mut self, aspect_id: AspectId) -> Self {
-        self.operations.push(UpdateBlueprint::decrement(aspect_id));
-        self
-    }
-
-    pub fn add(mut self, aspect_id: AspectId, delta: i64) -> Self {
-        self.operations.push(UpdateBlueprint::add(aspect_id, delta));
-        self
-    }
-
-    pub fn toggle(mut self, aspect_id: AspectId) -> Self {
-        self.operations.push(UpdateBlueprint::toggle(aspect_id));
-        self
-    }
-
-    pub fn build(self) -> UpdateBlueprint {
-        UpdateBlueprint::compose(self.operations)
-    }
-}
-
-impl Default for UpdateBlueprintBuilder {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -491,7 +374,6 @@ impl Update {
         match &*self.operation {
             UpdateOp::Noop => state,
             UpdateOp::Set(aspect_id, value) => {
-                // Clone common types
                 if let Some(b) = value.downcast_ref::<bool>() {
                     state.set_typed(*aspect_id, *b)
                 } else if let Some(i) = value.downcast_ref::<i64>() {
@@ -503,14 +385,12 @@ impl Update {
                 } else if let Some(i) = value.downcast_ref::<i32>() {
                     state.set_typed(*aspect_id, *i)
                 } else {
-                    state // Can't clone other types
+                    state
                 }
             }
             UpdateOp::Modify(aspect_id, f) => {
-                // Clone state first to avoid borrow issues
                 let state_cloned = state.clone();
                 if let Some(v) = state_cloned.get(*aspect_id) {
-                    // Create a boxed clone of the Any reference
                     let boxed_clone: Box<dyn Any + Send + Sync> = if let Some(b) = v.downcast_ref::<bool>() {
                         Box::new(*b)
                     } else if let Some(i) = v.downcast_ref::<i64>() {
@@ -522,7 +402,6 @@ impl Update {
                     } else if let Some(i) = v.downcast_ref::<i32>() {
                         Box::new(*i)
                     } else {
-                        // For other types, we can't clone, so return original
                         return state_cloned;
                     };
                     state_cloned.set(*aspect_id, f(boxed_clone))
@@ -562,18 +441,6 @@ fn compile_update(blueprint: UpdateBlueprint) -> UpdateOp {
                 BlueprintValue::Integer(i) => Box::new(i),
                 BlueprintValue::Float(f) => Box::new(f),
                 BlueprintValue::String(s) => Box::new(s),
-                BlueprintValue::Typed { type_id, bytes } => {
-                    // For simplicity, only support i32 in typed values
-                    if type_id == std::any::TypeId::of::<i32>() {
-                        if let Some(&v) = deserialize_bytes::<i32>(&bytes) {
-                            Box::new(v)
-                        } else {
-                            Box::new(())
-                        }
-                    } else {
-                        Box::new(())
-                    }
-                }
             };
             UpdateOp::Set(aspect_id, boxed)
         }
@@ -608,10 +475,6 @@ fn compile_update(blueprint: UpdateBlueprint) -> UpdateOp {
                             boxed
                         }
                     }),
-                    ModifyOp::Custom { .. } => {
-                        // Placeholder for custom modifications
-                        Arc::new(|boxed| boxed)
-                    }
                 };
             UpdateOp::Modify(aspect_id, f)
         }
@@ -638,110 +501,6 @@ fn compile_update(blueprint: UpdateBlueprint) -> UpdateOp {
     }
 }
 
-/// Deserialize bytes back to a value
-fn deserialize_bytes<T>(bytes: &[u8]) -> Option<&T> {
-    if bytes.len() != std::mem::size_of::<T>() {
-        return None;
-    }
-    unsafe {
-        Some(&*(bytes.as_ptr() as *const T))
-    }
-}
-
-// ============================================================================
-// BUILDER FOR RUNTIME UPDATE
-// ============================================================================
-
-/// Builder for constructing Update instances
-pub struct UpdateBuilder {
-    operations: Vec<Update>,
-}
-
-impl UpdateBuilder {
-    pub fn new() -> Self {
-        Self {
-            operations: Vec::new(),
-        }
-    }
-
-    pub fn set(mut self, aspect_id: AspectId, value: Box<dyn Any + Send + Sync>) -> Self {
-        self.operations.push(Update::set(aspect_id, value));
-        self
-    }
-
-    pub fn set_bool(mut self, aspect_id: AspectId, value: bool) -> Self {
-        self.operations.push(Update::set_bool(aspect_id, value));
-        self
-    }
-
-    pub fn set_int(mut self, aspect_id: AspectId, value: i64) -> Self {
-        self.operations.push(Update::set_int(aspect_id, value));
-        self
-    }
-
-    pub fn set_float(mut self, aspect_id: AspectId, value: f64) -> Self {
-        self.operations.push(Update::set_float(aspect_id, value));
-        self
-    }
-
-    pub fn set_string(mut self, aspect_id: AspectId, value: impl Into<String>) -> Self {
-        self.operations.push(Update::set_string(aspect_id, value));
-        self
-    }
-
-    pub fn set_typed<T: Any + Send + Sync>(mut self, aspect_id: AspectId, value: T) -> Self {
-        self.operations.push(Update::set_typed(aspect_id, value));
-        self
-    }
-
-    pub fn increment(mut self, aspect_id: AspectId) -> Self {
-        self.operations.push(Update::increment(aspect_id));
-        self
-    }
-
-    pub fn decrement(mut self, aspect_id: AspectId) -> Self {
-        self.operations.push(Update::decrement(aspect_id));
-        self
-    }
-
-    pub fn add(mut self, aspect_id: AspectId, delta: i64) -> Self {
-        self.operations.push(Update::add(aspect_id, delta));
-        self
-    }
-
-    pub fn toggle(mut self, aspect_id: AspectId) -> Self {
-        self.operations.push(Update::toggle(aspect_id));
-        self
-    }
-
-    pub fn modify<F>(mut self, aspect_id: AspectId, f: F) -> Self
-    where
-        F: Fn(Box<dyn Any + Send + Sync>) -> Box<dyn Any + Send + Sync> + Send + Sync + 'static,
-    {
-        self.operations.push(Update::modify(aspect_id, f));
-        self
-    }
-
-    pub fn modify_typed<T, F>(mut self, aspect_id: AspectId, f: F) -> Self
-    where
-        T: Any + Send + Sync + Clone,
-        F: Fn(T) -> T + Send + Sync + 'static,
-    {
-        self.operations.push(Update::modify_typed(aspect_id, f));
-        self
-    }
-
-    pub fn build(self) -> Update {
-        Update::compose(self.operations)
-    }
-}
-
-impl Default for UpdateBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 // ============================================================================
 // TESTS
 // ============================================================================
@@ -754,21 +513,29 @@ mod tests {
     #[test]
     fn test_blueprint_noop() {
         let blueprint = UpdateBlueprint::noop();
-        assert_eq!(blueprint.node_count(), 1);
+        let runtime = Update::from_blueprint(blueprint);
+        let state = StateBuilder::new().build();
+        assert_eq!(runtime.apply(state.clone()), state);
     }
 
     #[test]
     fn test_blueprint_set() {
         let id = AspectId(0);
         let blueprint = UpdateBlueprint::set_bool(id, true);
-        assert_eq!(blueprint.node_count(), 1);
+        let runtime = Update::from_blueprint(blueprint);
+        let state = StateBuilder::new().build();
+        let new_state = runtime.apply(state);
+        assert_eq!(new_state.get_as::<bool>(id), Some(&true));
     }
 
     #[test]
     fn test_blueprint_increment() {
         let id = AspectId(0);
         let blueprint = UpdateBlueprint::increment(id);
-        assert_eq!(blueprint.node_count(), 1);
+        let runtime = Update::from_blueprint(blueprint);
+        let state = StateBuilder::new().set_int(id, 5).build();
+        let new_state = runtime.apply(state);
+        assert_eq!(new_state.get_as::<i64>(id), Some(&6));
     }
 
     #[test]
@@ -781,43 +548,34 @@ mod tests {
             UpdateBlueprint::increment(id2),
         ]);
 
-        assert_eq!(blueprint.node_count(), 3); // Compose + 2 leaf nodes
+        let runtime = Update::from_blueprint(blueprint);
+        let state = StateBuilder::new()
+            .set_bool(id1, false)
+            .set_int(id2, 5)
+            .build();
+
+        let new_state = runtime.apply(state);
+
+        assert_eq!(new_state.get_as::<bool>(id1), Some(&true));
+        assert_eq!(new_state.get_as::<i64>(id2), Some(&6));
     }
 
     #[test]
     fn test_blueprint_conditional() {
-        let id = AspectId(0);
-        let predicate = crate::active_in::ActiveInBlueprint::aspect_bool(id, true);
-        let blueprint = UpdateBlueprint::conditional(predicate, UpdateBlueprint::increment(id));
+        let bool_id = AspectId(0);
+        let int_id = AspectId(1);
+        let predicate = crate::active_in::ActiveInBlueprint::aspect_bool(bool_id, true);
+        let blueprint = UpdateBlueprint::conditional(predicate, UpdateBlueprint::increment(int_id));
 
-        assert_eq!(blueprint.node_count(), 3); // Conditional + predicate + then_update
-    }
-
-    #[test]
-    fn test_blueprint_builder() {
-        let id1 = AspectId(0);
-        let id2 = AspectId(1);
-
-        let blueprint = UpdateBlueprintBuilder::new()
-            .set_bool(id1, true)
-            .increment(id2)
-            .build();
-
-        assert_eq!(blueprint.node_count(), 3);
-    }
-
-    #[test]
-    fn test_runtime_from_blueprint() {
-        let id = AspectId(0);
-        let state = StateBuilder::new()
-            .set_bool(id, true)
-            .build();
-
-        let blueprint = UpdateBlueprint::set_bool(id, false);
         let runtime = Update::from_blueprint(blueprint);
+        let state = StateBuilder::new()
+            .set_bool(bool_id, true)
+            .set_int(int_id, 5)
+            .build();
 
         let new_state = runtime.apply(state);
-        assert_eq!(new_state.get_as::<bool>(id), Some(&false));
+
+        assert_eq!(new_state.get_as::<i64>(int_id), Some(&6));
     }
 
     #[test]
@@ -829,7 +587,7 @@ mod tests {
 
         let new_state = Update::noop().apply(state.clone());
 
-        assert_eq!(new_state, state);
+        assert_eq!(new_state, state.clone());
     }
 
     #[test]
@@ -903,27 +661,6 @@ mod tests {
         let new_state = update.apply(state);
 
         assert_eq!(new_state.get_as::<i64>(id), Some(&6));
-    }
-
-    #[test]
-    fn test_runtime_builder() {
-        let id1 = AspectId(0);
-        let id2 = AspectId(1);
-
-        let state = StateBuilder::new()
-            .set_bool(id1, false)
-            .set_int(id2, 5)
-            .build();
-
-        let update = UpdateBuilder::new()
-            .toggle(id1)
-            .increment(id2)
-            .build();
-
-        let new_state = update.apply(state);
-
-        assert_eq!(new_state.get_as::<bool>(id1), Some(&true));
-        assert_eq!(new_state.get_as::<i64>(id2), Some(&6));
     }
 
     #[test]

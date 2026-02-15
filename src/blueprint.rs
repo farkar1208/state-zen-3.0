@@ -17,7 +17,6 @@ pub struct AspectDescriptor {
 
 impl Clone for AspectDescriptor {
     fn clone(&self) -> Self {
-        // Clone common types
         let cloned_value: Box<dyn Any + Send + Sync> = if let Some(b) = self.default_value.downcast_ref::<bool>() {
             Box::new(*b)
         } else if let Some(i) = self.default_value.downcast_ref::<i64>() {
@@ -29,7 +28,6 @@ impl Clone for AspectDescriptor {
         } else if let Some(i) = self.default_value.downcast_ref::<i32>() {
             Box::new(*i)
         } else {
-            // For other types, can't clone, use a placeholder
             Box::new(())
         };
 
@@ -150,7 +148,6 @@ impl StateMachineBlueprint {
     pub fn create_initial_state(&self) -> State {
         let mut builder = crate::aspect::StateBuilder::new();
         for descriptor in self.aspects.values() {
-            // Clone common types
             let cloned_value: Box<dyn Any + Send + Sync> = if let Some(b) = descriptor.default_value.downcast_ref::<bool>() {
                 Box::new(*b)
             } else if let Some(i) = descriptor.default_value.downcast_ref::<i64>() {
@@ -162,234 +159,11 @@ impl StateMachineBlueprint {
             } else if let Some(i) = descriptor.default_value.downcast_ref::<i32>() {
                 Box::new(*i)
             } else {
-                continue; // Skip types we can't clone
+                continue;
             };
             builder = builder.set(descriptor.id, cloned_value);
         }
         builder.build()
-    }
-
-    /// Validate the blueprint
-    pub fn validate(&self) -> Result<ValidationResult, Vec<ValidationError>> {
-        let mut errors = Vec::new();
-
-        // Check for duplicate zone IDs
-        let mut zone_ids = HashSet::new();
-        for zone in &self.zones {
-            if !zone_ids.insert(&zone.id) {
-                errors.push(ValidationError::DuplicateZoneId(zone.id.clone()));
-            }
-        }
-
-        // Check for duplicate transition IDs
-        let mut transition_ids = HashSet::new();
-        for transition in &self.transitions {
-            if !transition_ids.insert(&transition.id) {
-                errors.push(ValidationError::DuplicateTransitionId(transition.id.clone()));
-            }
-        }
-
-        // Check that all aspect IDs referenced in activeIn and update exist
-        for transition in &self.transitions {
-            self._validate_aspect_refs_in_active_in(&transition.active_in, &mut errors);
-            self._validate_aspect_refs_in_update(&transition.update, &mut errors);
-        }
-
-        for zone in &self.zones {
-            self._validate_aspect_refs_in_active_in(&zone.active_in, &mut errors);
-        }
-
-        if errors.is_empty() {
-            Ok(ValidationResult::Valid)
-        } else {
-            Err(errors)
-        }
-    }
-
-    /// Helper to validate aspect references in ActiveIn predicates
-    fn _validate_aspect_refs_in_active_in(
-        &self,
-        _active_in: &crate::active_in::ActiveIn,
-        _errors: &mut Vec<ValidationError>,
-    ) {
-        // Note: Since ActiveIn is a closure, we cannot inspect its internals at compile time
-        // This validation would need to be done through a different mechanism
-        // (e.g., custom DSL, reflection, or explicit aspect registration)
-    }
-
-    /// Helper to validate aspect references in Update operations
-    fn _validate_aspect_refs_in_update(
-        &self,
-        _update: &crate::update::Update,
-        _errors: &mut Vec<ValidationError>,
-    ) {
-        // Note: Same limitation as ActiveIn - Update is a closure-based operation
-        // Full validation would require a different approach
-    }
-
-    /// Get the number of aspects, zones, and transitions
-    pub fn stats(&self) -> BlueprintStats {
-        BlueprintStats {
-            aspect_count: self.aspects.len(),
-            zone_count: self.zones.len(),
-            transition_count: self.transitions.len(),
-            event_count: self.events.len(),
-        }
-    }
-}
-
-/// Validation result for blueprint validation
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ValidationResult {
-    Valid,
-}
-
-/// Validation error types
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ValidationError {
-    DuplicateZoneId(ZoneId),
-    DuplicateTransitionId(TransitionId),
-    UndefinedAspect(AspectId),
-}
-
-impl std::fmt::Display for ValidationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ValidationError::DuplicateZoneId(id) => {
-                write!(f, "Duplicate zone ID: {:?}", id)
-            }
-            ValidationError::DuplicateTransitionId(id) => {
-                write!(f, "Duplicate transition ID: {:?}", id)
-            }
-            ValidationError::UndefinedAspect(id) => {
-                write!(f, "Undefined aspect referenced: {:?}", id)
-            }
-        }
-    }
-}
-
-/// Statistics about a blueprint
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BlueprintStats {
-    pub aspect_count: usize,
-    pub zone_count: usize,
-    pub transition_count: usize,
-    pub event_count: usize,
-}
-
-/// Builder for constructing StateMachineBlueprint instances
-pub struct BlueprintBuilder {
-    id: Option<String>,
-    aspects: Vec<Box<dyn Any>>,
-    zones: Vec<Zone>,
-    transitions: Vec<Transition>,
-}
-
-impl BlueprintBuilder {
-    pub fn new() -> Self {
-        Self {
-            id: None,
-            aspects: Vec::new(),
-            zones: Vec::new(),
-            transitions: Vec::new(),
-        }
-    }
-
-    pub fn id(mut self, id: impl Into<String>) -> Self {
-        self.id = Some(id.into());
-        self
-    }
-
-    /// Add a generic aspect
-    pub fn aspect<T>(mut self, aspect: Aspect<T>) -> Self
-    where
-        T: Any + Send + Sync + Clone,
-    {
-        self.aspects.push(Box::new(aspect));
-        self
-    }
-
-    pub fn zone(mut self, zone: Zone) -> Self {
-        self.zones.push(zone);
-        self
-    }
-
-    pub fn transition(mut self, transition: Transition) -> Self {
-        self.transitions.push(transition);
-        self
-    }
-
-    pub fn build(self) -> Result<StateMachineBlueprint, String> {
-        let id = self.id.ok_or("Blueprint id is required")?;
-
-        let mut blueprint = StateMachineBlueprint::new(id);
-
-        for aspect_box in self.aspects {
-            // Try to downcast to StateAspect<T> using a helper function
-            let result = try_add_aspect(&mut blueprint, aspect_box);
-            if let Err(e) = result {
-                return Err(e);
-            }
-        }
-
-        for zone in self.zones {
-            blueprint.add_zone(zone);
-        }
-        for transition in self.transitions {
-            blueprint.add_transition(transition);
-        }
-
-        Ok(blueprint)
-    }
-}
-
-/// Helper function to try adding an aspect to blueprint
-fn try_add_aspect(blueprint: &mut StateMachineBlueprint, aspect_box: Box<dyn Any>) -> Result<(), String> {
-    // Try each type using downcast which returns Err(original) if failed
-    let mut current = aspect_box;
-
-    // Try i32
-    match current.downcast::<Aspect<i32>>() {
-        Ok(aspect) => {
-            blueprint.add_aspect(*aspect);
-            return Ok(());
-        }
-        Err(rest) => current = rest,
-    }
-
-    // Try f64
-    match current.downcast::<Aspect<f64>>() {
-        Ok(aspect) => {
-            blueprint.add_aspect(*aspect);
-            return Ok(());
-        }
-        Err(rest) => current = rest,
-    }
-
-    // Try bool
-    match current.downcast::<Aspect<bool>>() {
-        Ok(aspect) => {
-            blueprint.add_aspect(*aspect);
-            return Ok(());
-        }
-        Err(rest) => current = rest,
-    }
-
-    // Try String
-    match current.downcast::<Aspect<String>>() {
-        Ok(aspect) => {
-            blueprint.add_aspect(*aspect);
-            return Ok(());
-        }
-        Err(_) => {
-            return Err(format!("Unknown aspect type"));
-        }
-    }
-}
-
-impl Default for BlueprintBuilder {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -481,72 +255,16 @@ mod tests {
     }
 
     #[test]
-    fn test_blueprint_stats() {
-        let mut blueprint = StateMachineBlueprint::new("test_machine");
-
-        let aspect: Aspect<String> = Aspect::new(AspectId(0), "mode", "idle".to_string());
-        blueprint.add_aspect(aspect);
-
-        let zone = Zone::new(ZoneId(0), "test_zone", ActiveIn::always());
-        blueprint.add_zone(zone);
-
-        let transition = Transition::new(
-            TransitionId(0),
-            "test_transition",
-            ActiveIn::always(),
-            EventId::new("start"),
-            Update::noop(),
-        );
-        blueprint.add_transition(transition);
-
-        let stats = blueprint.stats();
-
-        assert_eq!(stats.aspect_count, 1);
-        assert_eq!(stats.zone_count, 1);
-        assert_eq!(stats.transition_count, 1);
-        assert_eq!(stats.event_count, 1);
-    }
-
-    #[test]
-    fn test_blueprint_builder() {
-        let aspect: Aspect<String> = Aspect::new(AspectId(0), "mode", "idle".to_string());
-        let zone = Zone::new(ZoneId(0), "test_zone", ActiveIn::always());
-        let transition = Transition::new(
-            TransitionId(0),
-            "test_transition",
-            ActiveIn::always(),
-            EventId::new("start"),
-            Update::noop(),
-        );
-
-        let blueprint = BlueprintBuilder::new()
-            .id("test_machine")
-            .aspect(aspect)
-            .zone(zone)
-            .transition(transition)
-            .build()
-            .unwrap();
-
-        assert_eq!(blueprint.id, "test_machine");
-        assert_eq!(blueprint.aspects().count(), 1);
-        assert_eq!(blueprint.zones().len(), 1);
-        assert_eq!(blueprint.transitions().len(), 1);
-    }
-
-    #[test]
     fn test_blueprint_builder_multiple_types() {
         let aspect1: Aspect<i32> = Aspect::new(AspectId(0), "count", 0);
         let aspect2: Aspect<f64> = Aspect::new(AspectId(1), "temperature", 20.0)
             .with_range(0.0, 100.0);
         let aspect3: Aspect<bool> = Aspect::new(AspectId(2), "enabled", true);
 
-        let blueprint = BlueprintBuilder::new()
-            .id("test_machine")
-            .aspect(aspect1)
-            .aspect(aspect2)
-            .aspect(aspect3)
-            .build()
-            .unwrap();
+        let mut blueprint = StateMachineBlueprint::new("test_machine");
+        blueprint.add_aspect(aspect1);
+        blueprint.add_aspect(aspect2);
+        blueprint.add_aspect(aspect3);
 
         assert_eq!(blueprint.aspects().count(), 3);
     }

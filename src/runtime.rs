@@ -1,7 +1,7 @@
 use crate::blueprint::StateMachineBlueprint;
 use crate::transition::EventId;
 use crate::zone::ZoneId;
-use crate::aspect::State;
+use crate::aspect::{State, AspectId};
 use std::collections::HashMap;
 
 /// Runtime state machine instance
@@ -60,13 +60,10 @@ impl StateMachineRuntime {
             if transition.event == *event && transition.is_active(&self.state) {
                 // Execute transition side effect
                 transition.trigger();
-                
+
                 // Apply state update
                 let new_state = transition.apply(self.state.clone());
-                
-                // Validate new state values against aspect constraints
-                self.validate_state(&new_state).expect("State validation failed");
-                
+
                 self.state = new_state;
                 
                 triggered = true;
@@ -105,15 +102,7 @@ impl StateMachineRuntime {
             }
         }
     }
-    
-    /// Validate a state against all aspect constraints
-    fn validate_state(&self, _state: &State) -> Result<(), String> {
-        // Note: With type-erased aspects, we can't do full runtime validation
-        // This is a limitation of the current design
-        // Users should ensure values stay within bounds at compile time or use custom validation
-        Ok(())
-    }
-    
+
     /// Get currently active zone IDs
     pub fn active_zones(&self) -> Vec<ZoneId> {
         self.zone_activations
@@ -148,17 +137,14 @@ mod tests {
     use crate::prelude::*;
     use crate::active_in::ActiveIn;
     use crate::update::Update;
-    use crate::blueprint::BlueprintBuilder;
+    use crate::blueprint::StateMachineBlueprint;
 
     #[test]
     fn test_runtime_creation() {
         let aspect: Aspect<String> = Aspect::new(AspectId(0), "mode", "idle".to_string());
 
-        let blueprint = BlueprintBuilder::new()
-            .id("test")
-            .aspect(aspect)
-            .build()
-            .unwrap();
+        let mut blueprint = StateMachineBlueprint::new("test");
+        blueprint.add_aspect(aspect);
 
         let runtime = StateMachineRuntime::new(blueprint);
 
@@ -177,12 +163,9 @@ mod tests {
             Update::set_string(AspectId(0), "running"),
         );
 
-        let blueprint = BlueprintBuilder::new()
-            .id("test")
-            .aspect(aspect)
-            .transition(transition)
-            .build()
-            .unwrap();
+        let mut blueprint = StateMachineBlueprint::new("test");
+        blueprint.add_aspect(aspect);
+        blueprint.add_transition(transition);
 
         let mut runtime = StateMachineRuntime::new(blueprint);
 
@@ -235,13 +218,10 @@ mod tests {
 
         let zone = Zone::new(ZoneId(0), "running", ActiveIn::aspect_string_eq(AspectId(0), "running"));
 
-        let blueprint = BlueprintBuilder::new()
-            .id("test")
-            .aspect(aspect)
-            .transition(transition)
-            .zone(zone)
-            .build()
-            .unwrap();
+        let mut blueprint = StateMachineBlueprint::new("test");
+        blueprint.add_aspect(aspect);
+        blueprint.add_transition(transition);
+        blueprint.add_zone(zone);
 
         let mut runtime = StateMachineRuntime::new(blueprint);
 

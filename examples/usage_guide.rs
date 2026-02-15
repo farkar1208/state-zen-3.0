@@ -168,15 +168,10 @@ fn main() {
     blueprint.add_transition(charge_transition);
     blueprint.add_transition(uncharge_transition);
     blueprint.add_transition(consume_transition);
-    
-    let stats = blueprint.stats();
+
     println!("   ✓ 蓝图构建完成");
-    println!("     - 状态面: {}", stats.aspect_count);
-    println!("     - 区域: {}", stats.zone_count);
-    println!("     - 转移: {}", stats.transition_count);
-    println!("     - 事件: {}", stats.event_count);
     println!();
-    
+
     // ============================================
     // 第五步：创建运行时实例
     // ============================================

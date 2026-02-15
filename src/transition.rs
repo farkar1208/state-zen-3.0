@@ -58,12 +58,6 @@ impl TransitionBlueprint {
             update,
         }
     }
-
-    /// Count the total number of AST nodes in this transition blueprint
-    pub fn node_count(&self) -> usize {
-        1 + self.active_in.node_count() + self.update.node_count()
-            // TransitionBlueprint + ActiveInBlueprint + UpdateBlueprint
-    }
 }
 
 // ============================================================================
@@ -271,8 +265,6 @@ mod tests {
         assert_eq!(blueprint.id, TransitionId(0));
         assert_eq!(blueprint.name, "test_transition");
         assert_eq!(blueprint.event, EventId::new("start"));
-        // node_count = 1 (Transition) + 1 (AspectBool) + 1 (Set) = 3
-        assert_eq!(blueprint.node_count(), 3);
     }
 
     #[test]

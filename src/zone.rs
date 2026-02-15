@@ -34,11 +34,6 @@ impl ZoneBlueprint {
             active_in,
         }
     }
-
-    /// Count the total number of AST nodes in this zone blueprint
-    pub fn node_count(&self) -> usize {
-        1 + self.active_in.node_count() // ZoneBlueprint + ActiveInBlueprint
-    }
 }
 
 // ============================================================================
@@ -232,7 +227,6 @@ mod tests {
 
         assert_eq!(blueprint.id, ZoneId(0));
         assert_eq!(blueprint.name, "test_zone");
-        assert_eq!(blueprint.node_count(), 2); // ZoneBlueprint + AspectBool
     }
 
     #[test]

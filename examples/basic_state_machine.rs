@@ -146,14 +146,6 @@ fn main() {
     blueprint.add_transition(uncharge_transition);
     blueprint.add_transition(consume_battery_transition);
 
-    // Print blueprint statistics
-    let stats = blueprint.stats();
-    println!("\n📊 Blueprint Statistics:");
-    println!("  Aspects: {}", stats.aspect_count);
-    println!("  Zones: {}", stats.zone_count);
-    println!("  Transitions: {}", stats.transition_count);
-    println!("  Events: {}", stats.event_count);
-
     // Create runtime state machine instance
     let mut runtime = StateMachineRuntime::new(blueprint);
     

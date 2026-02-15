@@ -32,27 +32,6 @@ pub enum ActiveInBlueprint {
     /// Check if a String aspect equals a value
     AspectStringEq { aspect_id: AspectId, value: String },
 
-    /// Generic equality comparison (type-erased)
-    AspectEqTyped {
-        aspect_id: AspectId,
-        type_id: std::any::TypeId,
-        value_bytes: Vec<u8>,
-    },
-
-    /// Generic less-than comparison (type-erased)
-    AspectLtTyped {
-        aspect_id: AspectId,
-        type_id: std::any::TypeId,
-        value_bytes: Vec<u8>,
-    },
-
-    /// Generic greater-than comparison (type-erased)
-    AspectGtTyped {
-        aspect_id: AspectId,
-        type_id: std::any::TypeId,
-        value_bytes: Vec<u8>,
-    },
-
     /// Logical AND of multiple predicates
     And(Vec<ActiveInBlueprint>),
 
@@ -107,42 +86,6 @@ impl ActiveInBlueprint {
         }
     }
 
-    /// Generic equality comparison for any PartialEq type
-    pub fn aspect_eq_typed<T>(aspect_id: AspectId, value: T) -> Self
-    where
-        T: std::cmp::PartialEq + Send + Sync + 'static,
-    {
-        ActiveInBlueprint::AspectEqTyped {
-            aspect_id,
-            type_id: std::any::TypeId::of::<T>(),
-            value_bytes: serialize_value(&value),
-        }
-    }
-
-    /// Generic less-than comparison for any PartialOrd type
-    pub fn aspect_lt_typed<T>(aspect_id: AspectId, value: T) -> Self
-    where
-        T: std::cmp::PartialOrd + Send + Sync + 'static,
-    {
-        ActiveInBlueprint::AspectLtTyped {
-            aspect_id,
-            type_id: std::any::TypeId::of::<T>(),
-            value_bytes: serialize_value(&value),
-        }
-    }
-
-    /// Generic greater-than comparison for any PartialOrd type
-    pub fn aspect_gt_typed<T>(aspect_id: AspectId, value: T) -> Self
-    where
-        T: std::cmp::PartialOrd + Send + Sync + 'static,
-    {
-        ActiveInBlueprint::AspectGtTyped {
-            aspect_id,
-            type_id: std::any::TypeId::of::<T>(),
-            value_bytes: serialize_value(&value),
-        }
-    }
-
     /// Logical AND of two predicates
     pub fn and(self, other: ActiveInBlueprint) -> Self {
         match (self, other) {
@@ -194,139 +137,6 @@ impl ActiveInBlueprint {
     /// Logical OR of multiple predicates (flattened)
     pub fn any(predicates: Vec<ActiveInBlueprint>) -> Self {
         ActiveInBlueprint::Or(predicates)
-    }
-
-    /// Count the total number of AST nodes in this predicate tree
-    pub fn node_count(&self) -> usize {
-        match self {
-            ActiveInBlueprint::Always | ActiveInBlueprint::Never => 1,
-            ActiveInBlueprint::AspectBool { .. }
-            | ActiveInBlueprint::AspectEq { .. }
-            | ActiveInBlueprint::AspectLt { .. }
-            | ActiveInBlueprint::AspectGt { .. }
-            | ActiveInBlueprint::AspectInRange { .. }
-            | ActiveInBlueprint::AspectStringEq { .. }
-            | ActiveInBlueprint::AspectEqTyped { .. }
-            | ActiveInBlueprint::AspectLtTyped { .. }
-            | ActiveInBlueprint::AspectGtTyped { .. } => 1,
-            ActiveInBlueprint::And(preds) | ActiveInBlueprint::Or(preds) => {
-                1 + preds.iter().map(|p| p.node_count()).sum::<usize>()
-            }
-            ActiveInBlueprint::Not(pred) => 1 + pred.node_count(),
-        }
-    }
-}
-
-/// Serialize a value to bytes (simple approach using bincode-style encoding)
-fn serialize_value<T: ?Sized>(value: &T) -> Vec<u8> {
-    unsafe {
-        let bytes = std::slice::from_raw_parts(
-            value as *const T as *const u8,
-            std::mem::size_of_val(value),
-        );
-        bytes.to_vec()
-    }
-}
-
-// ============================================================================
-// BUILDER FOR ACTIVE IN BLUEPRINT
-// ============================================================================
-
-/// Builder for constructing ActiveInBlueprint instances
-pub struct ActiveInBlueprintBuilder {
-    predicates: Vec<ActiveInBlueprint>,
-    op: BuilderOp,
-}
-
-#[derive(Clone, Copy)]
-enum BuilderOp {
-    And,
-    Or,
-}
-
-impl ActiveInBlueprintBuilder {
-    pub fn new() -> Self {
-        Self {
-            predicates: Vec::new(),
-            op: BuilderOp::And,
-        }
-    }
-
-    pub fn with_all() -> Self {
-        Self {
-            predicates: Vec::new(),
-            op: BuilderOp::And,
-        }
-    }
-
-    pub fn with_any() -> Self {
-        Self {
-            predicates: Vec::new(),
-            op: BuilderOp::Or,
-        }
-    }
-
-    pub fn add(mut self, predicate: ActiveInBlueprint) -> Self {
-        self.predicates.push(predicate);
-        self
-    }
-
-    pub fn aspect_bool(self, aspect_id: AspectId, value: bool) -> Self {
-        self.add(ActiveInBlueprint::aspect_bool(aspect_id, value))
-    }
-
-    pub fn aspect_eq(self, aspect_id: AspectId, value: i64) -> Self {
-        self.add(ActiveInBlueprint::aspect_eq(aspect_id, value))
-    }
-
-    pub fn aspect_lt(self, aspect_id: AspectId, value: i64) -> Self {
-        self.add(ActiveInBlueprint::aspect_lt(aspect_id, value))
-    }
-
-    pub fn aspect_gt(self, aspect_id: AspectId, value: i64) -> Self {
-        self.add(ActiveInBlueprint::aspect_gt(aspect_id, value))
-    }
-
-    pub fn aspect_in_range(self, aspect_id: AspectId, min: i64, max: i64) -> Self {
-        self.add(ActiveInBlueprint::aspect_in_range(aspect_id, min, max))
-    }
-
-    pub fn aspect_string_eq(self, aspect_id: AspectId, value: impl Into<String>) -> Self {
-        self.add(ActiveInBlueprint::aspect_string_eq(aspect_id, value))
-    }
-
-    pub fn aspect_eq_typed<T>(self, aspect_id: AspectId, value: T) -> Self
-    where
-        T: std::cmp::PartialEq + Send + Sync + 'static,
-    {
-        self.add(ActiveInBlueprint::aspect_eq_typed(aspect_id, value))
-    }
-
-    pub fn aspect_lt_typed<T>(self, aspect_id: AspectId, value: T) -> Self
-    where
-        T: std::cmp::PartialOrd + Send + Sync + 'static,
-    {
-        self.add(ActiveInBlueprint::aspect_lt_typed(aspect_id, value))
-    }
-
-    pub fn aspect_gt_typed<T>(self, aspect_id: AspectId, value: T) -> Self
-    where
-        T: std::cmp::PartialOrd + Send + Sync + 'static,
-    {
-        self.add(ActiveInBlueprint::aspect_gt_typed(aspect_id, value))
-    }
-
-    pub fn build(self) -> ActiveInBlueprint {
-        match self.op {
-            BuilderOp::And => ActiveInBlueprint::all(self.predicates),
-            BuilderOp::Or => ActiveInBlueprint::any(self.predicates),
-        }
-    }
-}
-
-impl Default for ActiveInBlueprintBuilder {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -514,50 +324,6 @@ pub(crate) fn evaluate_blueprint(blueprint: &ActiveInBlueprint, state: &State) -
         ActiveInBlueprint::AspectStringEq { aspect_id, value } => state
             .get_as::<String>(*aspect_id)
             .map_or(false, |s| *s == *value),
-        ActiveInBlueprint::AspectEqTyped {
-            aspect_id,
-            type_id,
-            value_bytes,
-        } => {
-            // For simplicity, we only support basic types in this implementation
-            // A full implementation would deserialize the bytes and compare
-            if *type_id == std::any::TypeId::of::<i32>() {
-                if let Some(&v) = deserialize_bytes::<i32>(value_bytes) {
-                    return state
-                        .get_as::<i32>(*aspect_id)
-                        .map_or(false, |s| *s == v);
-                }
-            }
-            false
-        }
-        ActiveInBlueprint::AspectLtTyped {
-            aspect_id,
-            type_id,
-            value_bytes,
-        } => {
-            if *type_id == std::any::TypeId::of::<i32>() {
-                if let Some(&v) = deserialize_bytes::<i32>(value_bytes) {
-                    return state
-                        .get_as::<i32>(*aspect_id)
-                        .map_or(false, |s| *s < v);
-                }
-            }
-            false
-        }
-        ActiveInBlueprint::AspectGtTyped {
-            aspect_id,
-            type_id,
-            value_bytes,
-        } => {
-            if *type_id == std::any::TypeId::of::<i32>() {
-                if let Some(&v) = deserialize_bytes::<i32>(value_bytes) {
-                    return state
-                        .get_as::<i32>(*aspect_id)
-                        .map_or(false, |s| *s > v);
-                }
-            }
-            false
-        }
         ActiveInBlueprint::And(predicates) => {
             predicates.iter().all(|p| evaluate_blueprint(p, state))
         }
@@ -565,16 +331,6 @@ pub(crate) fn evaluate_blueprint(blueprint: &ActiveInBlueprint, state: &State) -
             predicates.iter().any(|p| evaluate_blueprint(p, state))
         }
         ActiveInBlueprint::Not(predicate) => !evaluate_blueprint(predicate, state),
-    }
-}
-
-/// Deserialize bytes back to a value
-fn deserialize_bytes<T>(bytes: &[u8]) -> Option<&T> {
-    if bytes.len() != std::mem::size_of::<T>() {
-        return None;
-    }
-    unsafe {
-        Some(&*(bytes.as_ptr() as *const T))
     }
 }
 
@@ -635,56 +391,6 @@ mod tests {
 
         let blueprint = ActiveInBlueprint::aspect_bool(id, true).not();
         assert!(!evaluate_blueprint(&blueprint, &state));
-    }
-
-    #[test]
-    fn test_blueprint_builder() {
-        let id1 = AspectId(0);
-        let id2 = AspectId(1);
-
-        let state = StateBuilder::new()
-            .set_bool(id1, true)
-            .set_int(id2, 5)
-            .build();
-
-        let blueprint = ActiveInBlueprintBuilder::with_all()
-            .aspect_bool(id1, true)
-            .aspect_lt(id2, 10)
-            .build();
-
-        assert!(evaluate_blueprint(&blueprint, &state));
-    }
-
-    #[test]
-    fn test_blueprint_flattening() {
-        // Test that AND operations are flattened
-        let id1 = AspectId(0);
-        let id2 = AspectId(1);
-        let id3 = AspectId(2);
-
-        let blueprint = ActiveInBlueprint::aspect_bool(id1, true)
-            .and(ActiveInBlueprint::aspect_bool(id2, true))
-            .and(ActiveInBlueprint::aspect_bool(id3, true));
-
-        // Should be flattened into a single And with 3 predicates
-        if let ActiveInBlueprint::And(preds) = blueprint {
-            assert_eq!(preds.len(), 3);
-        } else {
-            panic!("Expected flattened And node");
-        }
-    }
-
-    #[test]
-    fn test_blueprint_node_count() {
-        let id1 = AspectId(0);
-        let id2 = AspectId(1);
-
-        let simple = ActiveInBlueprint::aspect_bool(id1, true);
-        assert_eq!(simple.node_count(), 1);
-
-        let complex = ActiveInBlueprint::aspect_bool(id1, true)
-            .and(ActiveInBlueprint::aspect_lt(id2, 10));
-        assert_eq!(complex.node_count(), 3); // And + 2 leaf nodes
     }
 
     #[test]
