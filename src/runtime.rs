@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn test_runtime_creation() {
-        let aspect: StateAspect<String> = StateAspect::new(AspectId(0), "mode", "idle".to_string());
+        let aspect: Aspect<String> = Aspect::new(AspectId(0), "mode", "idle".to_string());
 
         let blueprint = BlueprintBuilder::new()
             .id("test")
@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn test_runtime_dispatch() {
-        let aspect: StateAspect<String> = StateAspect::new(AspectId(0), "mode", "idle".to_string());
+        let aspect: Aspect<String> = Aspect::new(AspectId(0), "mode", "idle".to_string());
 
         let transition = Transition::new(
             TransitionId(0),
@@ -192,8 +192,8 @@ mod tests {
 
     #[test]
     fn test_runtime_zone_activation() {
-        let mode_aspect: StateAspect<String> = StateAspect::new(AspectId(0), "mode", "idle".to_string());
-        let battery_aspect: StateAspect<i64> = StateAspect::new(AspectId(1), "battery", 100);
+        let mode_aspect: Aspect<String> = Aspect::new(AspectId(0), "mode", "idle".to_string());
+        let battery_aspect: Aspect<i64> = Aspect::new(AspectId(1), "battery", 100);
 
         let zone = Zone::new(ZoneId(0), "low_battery", ActiveIn::aspect_lt(AspectId(1), 20));
 
@@ -223,7 +223,7 @@ mod tests {
 
     #[test]
     fn test_runtime_reset() {
-        let aspect: StateAspect<String> = StateAspect::new(AspectId(0), "mode", "idle".to_string());
+        let aspect: Aspect<String> = Aspect::new(AspectId(0), "mode", "idle".to_string());
 
         let transition = Transition::new(
             TransitionId(0),

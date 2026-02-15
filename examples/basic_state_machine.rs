@@ -1,4 +1,4 @@
-use state_zen::{AspectId, StateAspect, Zone, ZoneId, Transition, TransitionId, StateMachineRuntime};
+use state_zen::{AspectId, Aspect, Zone, ZoneId, Transition, TransitionId, StateMachineRuntime};
 use state_zen::transition::EventId;
 use state_zen::active_in::ActiveIn;
 use state_zen::update::Update;
@@ -6,20 +6,20 @@ use state_zen::StateMachineBlueprint;
 
 fn main() {
     // Define state aspects (dimensions of the state vector)
-    let mode_aspect: StateAspect<String> = StateAspect::new(
+    let mode_aspect: Aspect<String> = Aspect::new(
         AspectId(0),
         "mode",
         "idle".to_string(),
     );
 
-    let battery_aspect: StateAspect<i64> = StateAspect::new(
+    let battery_aspect: Aspect<i64> = Aspect::new(
         AspectId(1),
         "battery",
         100,
     )
     .with_range(0, 100);
 
-    let is_charging_aspect: StateAspect<bool> = StateAspect::new(
+    let is_charging_aspect: Aspect<bool> = Aspect::new(
         AspectId(2),
         "is_charging",
         false,

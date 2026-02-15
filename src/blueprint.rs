@@ -1,4 +1,4 @@
-use crate::aspect::{AspectId, State, StateAspect};
+use crate::aspect::{AspectId, State, Aspect};
 use crate::zone::{Zone, ZoneId};
 use crate::transition::{EventId, Transition, TransitionId};
 use std::any::{Any, TypeId};
@@ -45,7 +45,7 @@ impl Clone for AspectDescriptor {
 }
 
 impl AspectDescriptor {
-    pub fn new<T>(aspect: &StateAspect<T>) -> Self
+    pub fn new<T>(aspect: &Aspect<T>) -> Self
     where
         T: Any + Send + Sync + Clone,
     {
@@ -99,7 +99,7 @@ impl StateMachineBlueprint {
     }
 
     /// Add a state aspect to the blueprint (generic version)
-    pub fn add_aspect<T>(&mut self, aspect: StateAspect<T>) -> &mut Self
+    pub fn add_aspect<T>(&mut self, aspect: Aspect<T>) -> &mut Self
     where
         T: Any + Send + Sync + Clone,
     {
@@ -301,7 +301,7 @@ impl BlueprintBuilder {
     }
 
     /// Add a generic aspect
-    pub fn aspect<T>(mut self, aspect: StateAspect<T>) -> Self
+    pub fn aspect<T>(mut self, aspect: Aspect<T>) -> Self
     where
         T: Any + Send + Sync + Clone,
     {
@@ -349,7 +349,7 @@ fn try_add_aspect(blueprint: &mut StateMachineBlueprint, aspect_box: Box<dyn Any
     let mut current = aspect_box;
 
     // Try i32
-    match current.downcast::<StateAspect<i32>>() {
+    match current.downcast::<Aspect<i32>>() {
         Ok(aspect) => {
             blueprint.add_aspect(*aspect);
             return Ok(());
@@ -358,7 +358,7 @@ fn try_add_aspect(blueprint: &mut StateMachineBlueprint, aspect_box: Box<dyn Any
     }
 
     // Try f64
-    match current.downcast::<StateAspect<f64>>() {
+    match current.downcast::<Aspect<f64>>() {
         Ok(aspect) => {
             blueprint.add_aspect(*aspect);
             return Ok(());
@@ -367,7 +367,7 @@ fn try_add_aspect(blueprint: &mut StateMachineBlueprint, aspect_box: Box<dyn Any
     }
 
     // Try bool
-    match current.downcast::<StateAspect<bool>>() {
+    match current.downcast::<Aspect<bool>>() {
         Ok(aspect) => {
             blueprint.add_aspect(*aspect);
             return Ok(());
@@ -376,7 +376,7 @@ fn try_add_aspect(blueprint: &mut StateMachineBlueprint, aspect_box: Box<dyn Any
     }
 
     // Try String
-    match current.downcast::<StateAspect<String>>() {
+    match current.downcast::<Aspect<String>>() {
         Ok(aspect) => {
             blueprint.add_aspect(*aspect);
             return Ok(());
@@ -414,7 +414,7 @@ mod tests {
     fn test_blueprint_add_aspect_generic() {
         let mut blueprint = StateMachineBlueprint::new("test_machine");
 
-        let aspect: StateAspect<i32> = StateAspect::new(AspectId(0), "counter", 0);
+        let aspect: Aspect<i32> = Aspect::new(AspectId(0), "counter", 0);
 
         blueprint.add_aspect(aspect);
 
@@ -425,7 +425,7 @@ mod tests {
     fn test_blueprint_add_aspect_with_bounds() {
         let mut blueprint = StateMachineBlueprint::new("test_machine");
 
-        let aspect: StateAspect<i32> = StateAspect::new(AspectId(0), "counter", 50)
+        let aspect: Aspect<i32> = Aspect::new(AspectId(0), "counter", 50)
             .with_range(0, 100);
 
         blueprint.add_aspect(aspect);
@@ -468,8 +468,8 @@ mod tests {
     fn test_blueprint_initial_state() {
         let mut blueprint = StateMachineBlueprint::new("test_machine");
 
-        let aspect1: StateAspect<String> = StateAspect::new(AspectId(0), "mode", "idle".to_string());
-        let aspect2: StateAspect<i64> = StateAspect::new(AspectId(1), "count", 0i64);
+        let aspect1: Aspect<String> = Aspect::new(AspectId(0), "mode", "idle".to_string());
+        let aspect2: Aspect<i64> = Aspect::new(AspectId(1), "count", 0i64);
 
         blueprint.add_aspect(aspect1);
         blueprint.add_aspect(aspect2);
@@ -484,7 +484,7 @@ mod tests {
     fn test_blueprint_stats() {
         let mut blueprint = StateMachineBlueprint::new("test_machine");
 
-        let aspect: StateAspect<String> = StateAspect::new(AspectId(0), "mode", "idle".to_string());
+        let aspect: Aspect<String> = Aspect::new(AspectId(0), "mode", "idle".to_string());
         blueprint.add_aspect(aspect);
 
         let zone = Zone::new(ZoneId(0), "test_zone", ActiveIn::always());
@@ -509,7 +509,7 @@ mod tests {
 
     #[test]
     fn test_blueprint_builder() {
-        let aspect: StateAspect<String> = StateAspect::new(AspectId(0), "mode", "idle".to_string());
+        let aspect: Aspect<String> = Aspect::new(AspectId(0), "mode", "idle".to_string());
         let zone = Zone::new(ZoneId(0), "test_zone", ActiveIn::always());
         let transition = Transition::new(
             TransitionId(0),
@@ -535,10 +535,10 @@ mod tests {
 
     #[test]
     fn test_blueprint_builder_multiple_types() {
-        let aspect1: StateAspect<i32> = StateAspect::new(AspectId(0), "count", 0);
-        let aspect2: StateAspect<f64> = StateAspect::new(AspectId(1), "temperature", 20.0)
+        let aspect1: Aspect<i32> = Aspect::new(AspectId(0), "count", 0);
+        let aspect2: Aspect<f64> = Aspect::new(AspectId(1), "temperature", 20.0)
             .with_range(0.0, 100.0);
-        let aspect3: StateAspect<bool> = StateAspect::new(AspectId(2), "enabled", true);
+        let aspect3: Aspect<bool> = Aspect::new(AspectId(2), "enabled", true);
 
         let blueprint = BlueprintBuilder::new()
             .id("test_machine")

@@ -2,7 +2,7 @@
 ///
 /// 本示例展示如何使用 state-zen 创建和运行状态机
 
-use state_zen::{AspectId, StateAspect, Zone, ZoneId, Transition, TransitionId, StateMachineRuntime, StateMachineBlueprint};
+use state_zen::{AspectId, Aspect, Zone, ZoneId, Transition, TransitionId, StateMachineRuntime, StateMachineBlueprint};
 use state_zen::transition::EventId;
 use state_zen::active_in::ActiveIn;
 use state_zen::update::Update;
@@ -16,20 +16,20 @@ fn main() {
     println!("1️⃣ 定义状态面");
 
     // 定义设备的状态面
-    let mode: StateAspect<String> = StateAspect::new(
+    let mode: Aspect<String> = Aspect::new(
         AspectId(0),
         "mode",
         "idle".to_string()
     );
 
-    let battery: StateAspect<i64> = StateAspect::new(
+    let battery: Aspect<i64> = Aspect::new(
         AspectId(1),
         "battery",
         100
     )
     .with_range(0, 100);
 
-    let is_charging: StateAspect<bool> = StateAspect::new(
+    let is_charging: Aspect<bool> = Aspect::new(
         AspectId(2),
         "is_charging",
         false

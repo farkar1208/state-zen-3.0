@@ -9,7 +9,8 @@ pub mod runtime;
 // Export core types
 pub use aspect::{
     AspectId, State, StateBuilder,
-    StateAspect, Bounds, validate_bounds, any_value,
+    Aspect, AspectBlueprint, AspectBoundsBlueprint, AspectBlueprintBuilder,
+    Bounds, validate_bounds, any_value,
 };
 pub use active_in::{ActiveIn, ActiveInBlueprint, ActiveInBlueprintBuilder, Predicate};
 pub use zone::{Zone, ZoneBlueprint, ZoneId};
@@ -22,7 +23,8 @@ pub use runtime::StateMachineRuntime;
 pub mod prelude {
     pub use crate::aspect::{
         AspectId, State, StateBuilder,
-        StateAspect, Bounds, validate_bounds, any_value,
+        Aspect, AspectBlueprint, AspectBoundsBlueprint, AspectBlueprintBuilder,
+        Bounds, validate_bounds, any_value,
     };
     pub use crate::active_in::{ActiveIn, ActiveInBlueprint, ActiveInBlueprintBuilder, Predicate};
     pub use crate::zone::{Zone, ZoneBlueprint, ZoneId};
