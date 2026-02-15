@@ -1,4 +1,5 @@
 use crate::aspect::{AspectId, State};
+use std::ops::Not;
 use std::sync::Arc;
 
 // ============================================================================
@@ -124,11 +125,6 @@ impl ActiveInBlueprint {
         }
     }
 
-    /// Logical NOT of a predicate
-    pub fn not(self) -> Self {
-        ActiveInBlueprint::Not(Box::new(self))
-    }
-
     /// Logical AND of multiple predicates (flattened)
     pub fn all(predicates: Vec<ActiveInBlueprint>) -> Self {
         ActiveInBlueprint::And(predicates)
@@ -137,6 +133,14 @@ impl ActiveInBlueprint {
     /// Logical OR of multiple predicates (flattened)
     pub fn any(predicates: Vec<ActiveInBlueprint>) -> Self {
         ActiveInBlueprint::Or(predicates)
+    }
+}
+
+impl Not for ActiveInBlueprint {
+    type Output = Self;
+
+    fn not(self) -> Self {
+        ActiveInBlueprint::Not(Box::new(self))
     }
 }
 
@@ -285,11 +289,6 @@ impl ActiveIn {
         Self::new(move |state| self.evaluate(state) || other.evaluate(state))
     }
 
-    /// Logical NOT of a predicate
-    pub fn not(self) -> Self {
-        Self::new(move |state| !self.evaluate(state))
-    }
-
     /// Logical AND of multiple predicates
     pub fn all(predicates: Vec<ActiveIn>) -> Self {
         Self::new(move |state| predicates.iter().all(|p| p.evaluate(state)))
@@ -298,6 +297,14 @@ impl ActiveIn {
     /// Logical OR of multiple predicates
     pub fn any(predicates: Vec<ActiveIn>) -> Self {
         Self::new(move |state| predicates.iter().any(|p| p.evaluate(state)))
+    }
+}
+
+impl Not for ActiveIn {
+    type Output = Self;
+
+    fn not(self) -> Self {
+        Self::new(move |state| !self.evaluate(state))
     }
 }
 
@@ -437,5 +444,57 @@ mod tests {
         let active_in = ActiveIn::aspect_bool(id1, false)
             .or(ActiveIn::aspect_gt(id2, 0));
         assert!(active_in.evaluate(&state));
+    }
+
+    #[test]
+    fn test_blueprint_not_operator() {
+        let id = AspectId(0);
+        let state = StateBuilder::new()
+            .set_bool(id, true)
+            .build();
+
+        // 测试 !ActiveInBlueprint::always()
+        let always = ActiveInBlueprint::always();
+        let never = !always.clone();
+        assert!(evaluate_blueprint(&always, &state));
+        assert!(!evaluate_blueprint(&never, &state));
+
+        // 测试 !ActiveInBlueprint::never()
+        let not_never = !ActiveInBlueprint::never();
+        assert!(evaluate_blueprint(&not_never, &state));
+
+        // 测试 !ActiveInBlueprint::aspect_bool()
+        let is_true = ActiveInBlueprint::aspect_bool(id, true);
+        let not_true = !is_true.clone();
+        assert!(evaluate_blueprint(&is_true, &state));
+        assert!(!evaluate_blueprint(&not_true, &state));
+    }
+
+    #[test]
+    fn test_runtime_not_operator() {
+        let id = AspectId(0);
+        let state = StateBuilder::new()
+            .set_bool(id, true)
+            .build();
+
+        // 测试 !ActiveIn::always()
+        let always = ActiveIn::always();
+        let never = !always.clone();
+        assert!(always.evaluate(&state));
+        assert!(!never.evaluate(&state));
+
+        // 测试 !ActiveIn::never()
+        let not_never = !ActiveIn::never();
+        assert!(not_never.evaluate(&state));
+
+        // 测试 !ActiveIn::aspect_bool()
+        let is_true = ActiveIn::aspect_bool(id, true);
+        let not_true = !is_true.clone();
+        assert!(is_true.evaluate(&state));
+        assert!(!not_true.evaluate(&state));
+
+        // 测试双重否定
+        let double_negated = !!is_true;
+        assert!(double_negated.evaluate(&state));
     }
 }
