@@ -177,20 +177,29 @@ impl ActiveIn {
     pub fn evaluate(&self, state: &State) -> bool {
         (self.predicate)(state)
     }
+}
 
-    /// Always true predicate
-    pub fn always() -> Self {
-        Self::new(|_| true)
+// ============================================================================
+// FACTORY - Create runtime ActiveIn predicates
+// ============================================================================
+
+/// Factory for creating runtime ActiveIn predicates
+pub struct ActiveInFactory;
+
+impl ActiveInFactory {
+    /// Create an always-true predicate
+    pub fn always() -> ActiveIn {
+        ActiveIn::new(|_| true)
     }
 
-    /// Always false predicate
-    pub fn never() -> Self {
-        Self::new(|_| false)
+    /// Create an always-false predicate
+    pub fn never() -> ActiveIn {
+        ActiveIn::new(|_| false)
     }
 
     /// Check if an aspect has a specific boolean value
-    pub fn aspect_bool(aspect_id: AspectId, value: bool) -> Self {
-        Self::new(move |state| {
+    pub fn aspect_bool(aspect_id: AspectId, value: bool) -> ActiveIn {
+        ActiveIn::new(move |state| {
             state
                 .get_as::<bool>(aspect_id)
                 .map_or(false, |b| *b == value)
@@ -198,8 +207,8 @@ impl ActiveIn {
     }
 
     /// Check if an aspect has a specific integer value (i64)
-    pub fn aspect_eq(aspect_id: AspectId, value: i64) -> Self {
-        Self::new(move |state| {
+    pub fn aspect_eq(aspect_id: AspectId, value: i64) -> ActiveIn {
+        ActiveIn::new(move |state| {
             state
                 .get_as::<i64>(aspect_id)
                 .map_or(false, |i| *i == value)
@@ -207,8 +216,8 @@ impl ActiveIn {
     }
 
     /// Check if an aspect integer is less than a value
-    pub fn aspect_lt(aspect_id: AspectId, value: i64) -> Self {
-        Self::new(move |state| {
+    pub fn aspect_lt(aspect_id: AspectId, value: i64) -> ActiveIn {
+        ActiveIn::new(move |state| {
             state
                 .get_as::<i64>(aspect_id)
                 .map_or(false, |i| *i < value)
@@ -216,8 +225,8 @@ impl ActiveIn {
     }
 
     /// Check if an aspect integer is greater than a value
-    pub fn aspect_gt(aspect_id: AspectId, value: i64) -> Self {
-        Self::new(move |state| {
+    pub fn aspect_gt(aspect_id: AspectId, value: i64) -> ActiveIn {
+        ActiveIn::new(move |state| {
             state
                 .get_as::<i64>(aspect_id)
                 .map_or(false, |i| *i > value)
@@ -225,8 +234,8 @@ impl ActiveIn {
     }
 
     /// Check if an aspect integer is in a range
-    pub fn aspect_in_range(aspect_id: AspectId, min: i64, max: i64) -> Self {
-        Self::new(move |state| {
+    pub fn aspect_in_range(aspect_id: AspectId, min: i64, max: i64) -> ActiveIn {
+        ActiveIn::new(move |state| {
             state
                 .get_as::<i64>(aspect_id)
                 .map_or(false, |i| *i >= min && *i <= max)
@@ -234,9 +243,9 @@ impl ActiveIn {
     }
 
     /// Check if an aspect string equals a value
-    pub fn aspect_string_eq(aspect_id: AspectId, value: impl Into<String> + Clone) -> Self {
+    pub fn aspect_string_eq(aspect_id: AspectId, value: impl Into<String> + Clone) -> ActiveIn {
         let value = value.into();
-        Self::new(move |state| {
+        ActiveIn::new(move |state| {
             state
                 .get_as::<String>(aspect_id)
                 .map_or(false, |s| *s == value)
@@ -244,11 +253,11 @@ impl ActiveIn {
     }
 
     /// Generic comparison for any PartialOrd type
-    pub fn aspect_lt_typed<T>(aspect_id: AspectId, value: T) -> Self
+    pub fn aspect_lt_typed<T>(aspect_id: AspectId, value: T) -> ActiveIn
     where
         T: std::cmp::PartialOrd + Send + Sync + 'static,
     {
-        Self::new(move |state| {
+        ActiveIn::new(move |state| {
             state
                 .get_as::<T>(aspect_id)
                 .map_or(false, |v| *v < value)
@@ -256,11 +265,11 @@ impl ActiveIn {
     }
 
     /// Generic comparison for any PartialOrd type
-    pub fn aspect_gt_typed<T>(aspect_id: AspectId, value: T) -> Self
+    pub fn aspect_gt_typed<T>(aspect_id: AspectId, value: T) -> ActiveIn
     where
         T: std::cmp::PartialOrd + Send + Sync + 'static,
     {
-        Self::new(move |state| {
+        ActiveIn::new(move |state| {
             state
                 .get_as::<T>(aspect_id)
                 .map_or(false, |v| *v > value)
@@ -268,11 +277,11 @@ impl ActiveIn {
     }
 
     /// Generic comparison for any PartialEq type
-    pub fn aspect_eq_typed<T>(aspect_id: AspectId, value: T) -> Self
+    pub fn aspect_eq_typed<T>(aspect_id: AspectId, value: T) -> ActiveIn
     where
         T: std::cmp::PartialEq + Send + Sync + 'static,
     {
-        Self::new(move |state| {
+        ActiveIn::new(move |state| {
             state
                 .get_as::<T>(aspect_id)
                 .map_or(false, |v| *v == value)
@@ -280,31 +289,28 @@ impl ActiveIn {
     }
 
     /// Logical AND of two predicates
-    pub fn and(self, other: ActiveIn) -> Self {
-        Self::new(move |state| self.evaluate(state) && other.evaluate(state))
+    pub fn and(left: ActiveIn, right: ActiveIn) -> ActiveIn {
+        ActiveIn::new(move |state| left.evaluate(state) && right.evaluate(state))
     }
 
     /// Logical OR of two predicates
-    pub fn or(self, other: ActiveIn) -> Self {
-        Self::new(move |state| self.evaluate(state) || other.evaluate(state))
+    pub fn or(left: ActiveIn, right: ActiveIn) -> ActiveIn {
+        ActiveIn::new(move |state| left.evaluate(state) || right.evaluate(state))
     }
 
     /// Logical AND of multiple predicates
-    pub fn all(predicates: Vec<ActiveIn>) -> Self {
-        Self::new(move |state| predicates.iter().all(|p| p.evaluate(state)))
+    pub fn all(predicates: Vec<ActiveIn>) -> ActiveIn {
+        ActiveIn::new(move |state| predicates.iter().all(|p| p.evaluate(state)))
     }
 
     /// Logical OR of multiple predicates
-    pub fn any(predicates: Vec<ActiveIn>) -> Self {
-        Self::new(move |state| predicates.iter().any(|p| p.evaluate(state)))
+    pub fn any(predicates: Vec<ActiveIn>) -> ActiveIn {
+        ActiveIn::new(move |state| predicates.iter().any(|p| p.evaluate(state)))
     }
-}
 
-impl Not for ActiveIn {
-    type Output = Self;
-
-    fn not(self) -> Self {
-        Self::new(move |state| !self.evaluate(state))
+    /// Logical NOT of a predicate
+    pub fn not(predicate: ActiveIn) -> ActiveIn {
+        ActiveIn::new(move |state| !predicate.evaluate(state))
     }
 }
 
@@ -414,16 +420,16 @@ mod tests {
     }
 
     #[test]
-    fn test_runtime_legacy_api() {
+    fn test_runtime_factory_api() {
         let id = AspectId(0);
         let state = StateBuilder::new()
             .set_bool(id, true)
             .build();
 
-        let active_in = ActiveIn::aspect_bool(id, true);
+        let active_in = ActiveInFactory::aspect_bool(id, true);
         assert!(active_in.evaluate(&state));
 
-        let active_in = ActiveIn::aspect_bool(id, false);
+        let active_in = ActiveInFactory::aspect_bool(id, false);
         assert!(!active_in.evaluate(&state));
     }
 
@@ -437,64 +443,44 @@ mod tests {
             .set_int(id2, 5)
             .build();
 
-        let active_in = ActiveIn::aspect_bool(id1, true)
-            .and(ActiveIn::aspect_lt(id2, 10));
+        let active_in = ActiveInFactory::and(
+            ActiveInFactory::aspect_bool(id1, true),
+            ActiveInFactory::aspect_lt(id2, 10)
+        );
         assert!(active_in.evaluate(&state));
 
-        let active_in = ActiveIn::aspect_bool(id1, false)
-            .or(ActiveIn::aspect_gt(id2, 0));
+        let active_in = ActiveInFactory::or(
+            ActiveInFactory::aspect_bool(id1, false),
+            ActiveInFactory::aspect_gt(id2, 0)
+        );
         assert!(active_in.evaluate(&state));
     }
 
     #[test]
-    fn test_blueprint_not_operator() {
+    fn test_runtime_factory_not() {
         let id = AspectId(0);
         let state = StateBuilder::new()
             .set_bool(id, true)
             .build();
 
-        // 测试 !ActiveInBlueprint::always()
-        let always = ActiveInBlueprint::always();
-        let never = !always.clone();
-        assert!(evaluate_blueprint(&always, &state));
-        assert!(!evaluate_blueprint(&never, &state));
-
-        // 测试 !ActiveInBlueprint::never()
-        let not_never = !ActiveInBlueprint::never();
-        assert!(evaluate_blueprint(&not_never, &state));
-
-        // 测试 !ActiveInBlueprint::aspect_bool()
-        let is_true = ActiveInBlueprint::aspect_bool(id, true);
-        let not_true = !is_true.clone();
-        assert!(evaluate_blueprint(&is_true, &state));
-        assert!(!evaluate_blueprint(&not_true, &state));
-    }
-
-    #[test]
-    fn test_runtime_not_operator() {
-        let id = AspectId(0);
-        let state = StateBuilder::new()
-            .set_bool(id, true)
-            .build();
-
-        // 测试 !ActiveIn::always()
-        let always = ActiveIn::always();
-        let never = !always.clone();
+        // 测试 ActiveInFactory::not()
+        let always = ActiveInFactory::always();
+        let never = ActiveInFactory::not(always.clone());
         assert!(always.evaluate(&state));
         assert!(!never.evaluate(&state));
 
-        // 测试 !ActiveIn::never()
-        let not_never = !ActiveIn::never();
+        // 测试 !ActiveInBlueprint::never()
+        let not_never = ActiveInFactory::not(ActiveInFactory::never());
         assert!(not_never.evaluate(&state));
 
-        // 测试 !ActiveIn::aspect_bool()
-        let is_true = ActiveIn::aspect_bool(id, true);
-        let not_true = !is_true.clone();
+        // 测试 !ActiveInBlueprint::aspect_bool()
+        let is_true = ActiveInFactory::aspect_bool(id, true);
+        let not_true = ActiveInFactory::not(is_true.clone());
         assert!(is_true.evaluate(&state));
         assert!(!not_true.evaluate(&state));
 
         // 测试双重否定
-        let double_negated = !!is_true;
+        let double_negated = ActiveInFactory::not(ActiveInFactory::not(is_true));
         assert!(double_negated.evaluate(&state));
     }
 }

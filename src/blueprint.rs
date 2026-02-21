@@ -200,7 +200,7 @@ impl StateMachineBlueprint {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::active_in::ActiveIn;
+    use crate::active_in::ActiveInFactory;
     use crate::update::Update;
     use crate::zone::ZoneId;
     use crate::transition::TransitionId;
@@ -244,7 +244,7 @@ mod tests {
     fn test_blueprint_add_zone() {
         let mut blueprint = StateMachineBlueprint::new("test_machine");
 
-        let zone = Zone::new(ZoneId(0), "test_zone", ActiveIn::always());
+        let zone = Zone::new(ZoneId(0), "test_zone", ActiveInFactory::always());
 
         blueprint.add_zone(zone);
 
@@ -258,7 +258,7 @@ mod tests {
         let transition = Transition::new(
             TransitionId(0),
             "test_transition",
-            ActiveIn::always(),
+            ActiveInFactory::always(),
             EventId::new("start"),
             Update::noop(),
         );

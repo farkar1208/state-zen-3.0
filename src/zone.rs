@@ -213,7 +213,7 @@ impl Default for ZoneBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::active_in::ActiveIn;
+    use crate::active_in::ActiveInFactory;
     use crate::aspect::AspectId;
     use crate::aspect::StateBuilder;
 
@@ -248,7 +248,7 @@ mod tests {
     fn test_zone_creation() {
         let aspect_id = AspectId(0);
         let zone_id = ZoneId(0);
-        let active_in = ActiveIn::aspect_bool(aspect_id, true);
+        let active_in = ActiveInFactory::aspect_bool(aspect_id, true);
 
         let zone = Zone::new(zone_id, "test_zone", active_in);
 
@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn test_zone_equality() {
         let zone_id = ZoneId(0);
-        let active_in = ActiveIn::always();
+        let active_in = ActiveInFactory::always();
 
         let zone1 = Zone::new(zone_id, "zone1", active_in.clone());
         let zone2 = Zone::new(zone_id, "zone2", active_in.clone());
@@ -275,7 +275,7 @@ mod tests {
     fn test_zone_with_handlers() {
         let aspect_id = AspectId(0);
         let zone_id = ZoneId(0);
-        let active_in = ActiveIn::aspect_bool(aspect_id, true);
+        let active_in = ActiveInFactory::aspect_bool(aspect_id, true);
 
         let zone = Zone::new(zone_id, "test_zone", active_in)
             .with_on_enter(|| {})
@@ -290,7 +290,7 @@ mod tests {
         let aspect_id = AspectId(0);
         let zone_id = ZoneId(0);
 
-        let active_in = ActiveIn::aspect_bool(aspect_id, true);
+        let active_in = ActiveInFactory::aspect_bool(aspect_id, true);
         let zone = Zone::new(zone_id, "test_zone", active_in);
 
         let state_active = StateBuilder::new()
@@ -309,7 +309,7 @@ mod tests {
     fn test_zone_builder() {
         let aspect_id = AspectId(0);
         let zone_id = ZoneId(0);
-        let active_in = ActiveIn::aspect_bool(aspect_id, true);
+        let active_in = ActiveInFactory::aspect_bool(aspect_id, true);
 
         let zone = ZoneBuilder::new()
             .id(zone_id)

@@ -248,7 +248,7 @@ impl Default for TransitionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::active_in::ActiveIn;
+    use crate::active_in::ActiveInFactory;
     use crate::aspect::{AspectId, StateBuilder};
     use crate::update::Update;
 
@@ -288,7 +288,7 @@ mod tests {
     fn test_transition_creation() {
         let mode_id = AspectId(0);
         let transition_id = TransitionId(0);
-        let active_in = ActiveIn::aspect_bool(mode_id, true);
+        let active_in = ActiveInFactory::aspect_bool(mode_id, true);
         let event = EventId::new("start");
         let update = Update::set_bool(mode_id, false);
 
@@ -303,7 +303,7 @@ mod tests {
     #[test]
     fn test_transition_equality() {
         let transition_id = TransitionId(0);
-        let active_in = ActiveIn::always();
+        let active_in = ActiveInFactory::always();
         let event = EventId::new("start");
         let update = Update::noop();
 
@@ -319,7 +319,7 @@ mod tests {
     fn test_transition_activation() {
         let mode_id = AspectId(0);
         let transition_id = TransitionId(0);
-        let active_in = ActiveIn::aspect_bool(mode_id, true);
+        let active_in = ActiveInFactory::aspect_bool(mode_id, true);
         let event = EventId::new("start");
         let update = Update::noop();
 
@@ -341,7 +341,7 @@ mod tests {
     fn test_transition_apply() {
         let mode_id = AspectId(0);
         let transition_id = TransitionId(0);
-        let active_in = ActiveIn::always();
+        let active_in = ActiveInFactory::always();
         let event = EventId::new("start");
         let update = Update::set_bool(mode_id, false);
 
@@ -360,7 +360,7 @@ mod tests {
     fn test_transition_builder() {
         let mode_id = AspectId(0);
         let transition_id = TransitionId(0);
-        let active_in = ActiveIn::always();
+        let active_in = ActiveInFactory::always();
         let event = EventId::new("start");
         let update = Update::set_bool(mode_id, false);
 

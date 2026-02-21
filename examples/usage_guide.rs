@@ -4,7 +4,7 @@
 
 use state_zen::{AspectId, AspectBlueprint, Zone, ZoneId, Transition, TransitionId, StateMachineRuntime, StateMachineBlueprint};
 use state_zen::transition::EventId;
-use state_zen::active_in::ActiveIn;
+use state_zen::active_in::ActiveInFactory;
 use state_zen::update::Update;
 
 fn main() {
@@ -46,7 +46,7 @@ fn main() {
     let low_battery_zone = Zone::new(
         ZoneId(0),
         "low_battery",
-        ActiveIn::aspect_lt(AspectId(1), 20i64)
+        ActiveInFactory::aspect_lt(AspectId(1), 20i64)
     )
     .with_on_enter(|| {
         println!("   ⚠️ 警告：电量低于 20%！");
@@ -59,7 +59,7 @@ fn main() {
     let charging_zone = Zone::new(
         ZoneId(1),
         "charging",
-        ActiveIn::aspect_bool(AspectId(2), true)
+        ActiveInFactory::aspect_bool(AspectId(2), true)
     )
     .with_on_enter(|| {
         println!("   🔌 开始充电");
@@ -72,7 +72,7 @@ fn main() {
     let running_zone = Zone::new(
         ZoneId(2),
         "running",
-        ActiveIn::aspect_string_eq(AspectId(0), "running")
+        ActiveInFactory::aspect_string_eq(AspectId(0), "running")
     )
     .with_on_enter(|| {
         println!("   ▶️ 设备启动");
@@ -92,7 +92,7 @@ fn main() {
     let start_transition = Transition::new(
         TransitionId(0),
         "start",
-        ActiveIn::aspect_string_eq(AspectId(0), "idle"),
+        ActiveInFactory::aspect_string_eq(AspectId(0), "idle"),
         EventId::new("start"),
         Update::set_string(AspectId(0), "running")
     );
@@ -101,7 +101,7 @@ fn main() {
     let stop_transition = Transition::new(
         TransitionId(1),
         "stop",
-        ActiveIn::aspect_string_eq(AspectId(0), "running"),
+        ActiveInFactory::aspect_string_eq(AspectId(0), "running"),
         EventId::new("stop"),
         Update::set_string(AspectId(0), "idle")
     );
@@ -110,7 +110,7 @@ fn main() {
     let charge_transition = Transition::new(
         TransitionId(2),
         "charge",
-        ActiveIn::always(),
+        ActiveInFactory::always(),
         EventId::new("charge"),
         Update::set_bool(AspectId(2), true)
     );
@@ -119,7 +119,7 @@ fn main() {
     let uncharge_transition = Transition::new(
         TransitionId(3),
         "uncharge",
-        ActiveIn::always(),
+        ActiveInFactory::always(),
         EventId::new("uncharge"),
         Update::set_bool(AspectId(2), false)
     );
@@ -128,7 +128,7 @@ fn main() {
     let consume_transition = Transition::new(
         TransitionId(4),
         "consume",
-        ActiveIn::aspect_string_eq(AspectId(0), "running"),
+        ActiveInFactory::aspect_string_eq(AspectId(0), "running"),
         EventId::new("tick"),
         Update::compose(vec![
             Update::conditional_else(

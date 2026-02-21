@@ -135,7 +135,7 @@ impl StateMachineRuntime {
 mod tests {
     use super::*;
     use crate::prelude::*;
-    use crate::active_in::ActiveIn;
+    use crate::active_in::ActiveInFactory;
     use crate::update::Update;
     use crate::blueprint::StateMachineBlueprint;
 
@@ -158,7 +158,7 @@ mod tests {
         let transition = Transition::new(
             TransitionId(0),
             "start",
-            ActiveIn::aspect_string_eq(AspectId(0), "idle"),
+            ActiveInFactory::aspect_string_eq(AspectId(0), "idle"),
             EventId::new("start"),
             Update::set_string(AspectId(0), "running"),
         );
@@ -178,12 +178,12 @@ mod tests {
         let mode_aspect = AspectBlueprint::new(AspectId(0), "mode", "idle".to_string());
         let battery_aspect = AspectBlueprint::new(AspectId(1), "battery", 100i64);
 
-        let zone = Zone::new(ZoneId(0), "low_battery", ActiveIn::aspect_lt(AspectId(1), 20));
+        let zone = Zone::new(ZoneId(0), "low_battery", ActiveInFactory::aspect_lt(AspectId(1), 20));
 
         let transition = Transition::new(
             TransitionId(0),
             "consume",
-            ActiveIn::always(),
+            ActiveInFactory::always(),
             EventId::new("consume"),
             Update::set_int(AspectId(1), 10),
         );
@@ -211,12 +211,12 @@ mod tests {
         let transition = Transition::new(
             TransitionId(0),
             "start",
-            ActiveIn::always(),
+            ActiveInFactory::always(),
             EventId::new("start"),
             Update::set_string(AspectId(0), "running"),
         );
 
-        let zone = Zone::new(ZoneId(0), "running", ActiveIn::aspect_string_eq(AspectId(0), "running"));
+        let zone = Zone::new(ZoneId(0), "running", ActiveInFactory::aspect_string_eq(AspectId(0), "running"));
 
         let mut blueprint = StateMachineBlueprint::new("test");
         blueprint.add_aspect(aspect);

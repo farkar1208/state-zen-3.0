@@ -42,7 +42,7 @@
 
 - **AspectId**, **State**, **StateBuilder**, **AspectBlueprint**, **AspectBoundsBlueprint**
 - **clone_any**, **eq_any**, **any_value**
-- **ActiveIn**, **ActiveInBlueprint**, **Predicate**
+- **ActiveIn**, **ActiveInBlueprint**, **ActiveInFactory**, **Predicate**
 - **Zone**, **ZoneBlueprint**, **ZoneId**
 - **Transition**, **TransitionBlueprint**, **TransitionId**, **EventId**
 - **Update**, **UpdateBlueprint**

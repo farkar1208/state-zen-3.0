@@ -12,7 +12,7 @@ pub use aspect::{
     AspectBlueprint, AspectBoundsBlueprint,
     clone_any, eq_any, any_value,
 };
-pub use active_in::{ActiveIn, ActiveInBlueprint, Predicate};
+pub use active_in::{ActiveIn, ActiveInBlueprint, ActiveInFactory, Predicate};
 pub use zone::{Zone, ZoneBlueprint, ZoneId};
 pub use transition::{Transition, TransitionBlueprint, TransitionId, EventId};
 pub use update::{Update, UpdateBlueprint};
@@ -26,7 +26,7 @@ pub mod prelude {
         AspectBlueprint, AspectBoundsBlueprint,
         clone_any, eq_any, any_value,
     };
-    pub use crate::active_in::{ActiveIn, ActiveInBlueprint, Predicate};
+    pub use crate::active_in::{ActiveIn, ActiveInBlueprint, ActiveInFactory, Predicate};
     pub use crate::zone::{Zone, ZoneBlueprint, ZoneId};
     pub use crate::transition::{Transition, TransitionBlueprint, TransitionId, EventId};
     pub use crate::update::{Update, UpdateBlueprint};
