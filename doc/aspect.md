@@ -146,16 +146,34 @@ pub struct StateBuilder {
 
 ---
 
+## Traits
+
+### `pub trait ClonableAny: Any + Send + Sync`
+类型擦除的值支持克隆和相等比较的 trait。
+
+**方法：**
+- `fn clone_box(&self) -> Box<dyn ClonableAny>` - 克隆此类型擦除的值
+- `fn eq_box(&self, other: &dyn ClonableAny) -> bool` - 与另一个类型擦除的值比较相等性
+
+**自动实现：** 所有满足 `Any + Send + Sync + Clone + PartialEq + 'static` 的类型自动实现此 trait。
+
+**使用示例：**
+```rust
+// 基础类型自动实现
+let bool_val: Box<dyn ClonableAny> = Box::new(true);
+let cloned = bool_val.clone_box();  // 克隆
+
+// 自定义类型只需 derive Clone 和 PartialEq
+#[derive(Clone, PartialEq)]
+struct MyStruct { x: i32 }
+let custom_val: Box<dyn ClonableAny> = Box::new(MyStruct { x: 100 });
+```
+
+---
+
 ## Functions
 
-### `pub fn any_value<T: Any + Send + Sync>(value: T) -> Box<dyn Any + Send + Sync>`
-从常见类型创建类型擦除的值
-
-### `pub fn clone_any(value: &Box<dyn Any + Send + Sync>) -> Box<dyn Any + Send + Sync>`
-克隆类型擦除的值，支持常见类型，不支持的类型返回 `()` 作为后备
-
-### `pub fn eq_any(a: &Box<dyn Any + Send + Sync>, b: &Box<dyn Any + Send + Sync>) -> bool`
-比较两个类型擦除的值是否相等，支持常见类型，不支持的类型返回 `false`
+（无公共函数）
 
 ---
 

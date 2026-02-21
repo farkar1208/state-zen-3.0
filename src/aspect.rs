@@ -2,6 +2,53 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 
 // ============================================================================
+// CLONABLE ANY TRAIT - Type-safe clone and compare for type-erased values
+// ============================================================================
+
+/// Trait for type-erased values that support cloning and equality comparison.
+///
+/// This trait is automatically implemented for all types that satisfy:
+/// - Any + Send + Sync + Clone + PartialEq + 'static
+///
+/// Users can enable support for custom types by simply deriving Clone and PartialEq:
+/// ```rust
+/// #[derive(Clone, PartialEq)]
+/// struct MyType { field: i32 }
+/// ```
+pub trait ClonableAny: Any + Send + Sync + std::fmt::Debug {
+    /// Clone this type-erased value into a new boxed value
+    fn clone_box(&self) -> Box<dyn ClonableAny>;
+
+    /// Compare this type-erased value with another for equality
+    ///
+    /// Returns false if the other value is of a different type
+    fn eq_box(&self, other: &dyn ClonableAny) -> bool;
+
+    /// Helper method to access the underlying Any trait for downcasting
+    fn as_any(&self) -> &dyn Any;
+}
+
+// Blanket implementation for all types that satisfy the bounds
+impl<T: Any + Send + Sync + Clone + PartialEq + std::fmt::Debug + 'static> ClonableAny for T {
+    fn clone_box(&self) -> Box<dyn ClonableAny> {
+        Box::new(self.clone())
+    }
+
+    fn eq_box(&self, other: &dyn ClonableAny) -> bool {
+        // Use Any::downcast_ref from the Any trait
+        other
+            .as_any()
+            .downcast_ref::<T>()
+            .map(|other| self == other)
+            .unwrap_or(false)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+// ============================================================================
 // BLUEPRINT LAYER - AspectBlueprint (declarations without logic)
 // ============================================================================
 
@@ -15,9 +62,9 @@ pub struct AspectBoundsBlueprint {
     pub type_id: TypeId,
     pub type_name: String,
     /// Min value as Any (type-erased)
-    pub min_value: Option<Box<dyn Any + Send + Sync>>,
+    pub min_value: Option<Box<dyn ClonableAny>>,
     /// Max value as Any (type-erased)
-    pub max_value: Option<Box<dyn Any + Send + Sync>>,
+    pub max_value: Option<Box<dyn ClonableAny>>,
 }
 
 impl Clone for AspectBoundsBlueprint {
@@ -25,8 +72,8 @@ impl Clone for AspectBoundsBlueprint {
         Self {
             type_id: self.type_id,
             type_name: self.type_name.clone(),
-            min_value: self.min_value.as_ref().map(|v| clone_any(v)),
-            max_value: self.max_value.as_ref().map(|v| clone_any(v)),
+            min_value: self.min_value.as_ref().map(|v| v.clone_box()),
+            max_value: self.max_value.as_ref().map(|v| v.clone_box()),
         }
     }
 }
@@ -41,7 +88,7 @@ impl AspectBoundsBlueprint {
         }
     }
 
-    pub fn with_min<T: 'static + Send + Sync>(mut self, min: T) -> Self {
+    pub fn with_min<T: 'static + Send + Sync + Clone + PartialEq + std::fmt::Debug>(mut self, min: T) -> Self {
         // Validate type consistency
         if TypeId::of::<T>() != self.type_id {
             panic!(
@@ -50,11 +97,11 @@ impl AspectBoundsBlueprint {
                 std::any::type_name::<T>()
             );
         }
-        self.min_value = Some(Box::new(min));
+        self.min_value = Some(Box::new(min) as Box<dyn ClonableAny>);
         self
     }
 
-    pub fn with_max<T: 'static + Send + Sync>(mut self, max: T) -> Self {
+    pub fn with_max<T: 'static + Send + Sync + Clone + PartialEq + std::fmt::Debug>(mut self, max: T) -> Self {
         // Validate type consistency
         if TypeId::of::<T>() != self.type_id {
             panic!(
@@ -63,11 +110,11 @@ impl AspectBoundsBlueprint {
                 std::any::type_name::<T>()
             );
         }
-        self.max_value = Some(Box::new(max));
+        self.max_value = Some(Box::new(max) as Box<dyn ClonableAny>);
         self
     }
 
-    pub fn with_range<T: 'static + Send + Sync>(mut self, min: T, max: T) -> Self {
+    pub fn with_range<T: 'static + Send + Sync + Clone + PartialEq + std::fmt::Debug>(mut self, min: T, max: T) -> Self {
         // Validate type consistency
         if TypeId::of::<T>() != self.type_id {
             panic!(
@@ -76,8 +123,8 @@ impl AspectBoundsBlueprint {
                 std::any::type_name::<T>()
             );
         }
-        self.min_value = Some(Box::new(min));
-        self.max_value = Some(Box::new(max));
+        self.min_value = Some(Box::new(min) as Box<dyn ClonableAny>);
+        self.max_value = Some(Box::new(max) as Box<dyn ClonableAny>);
         self
     }
 
@@ -96,7 +143,7 @@ pub struct AspectBlueprint {
     pub id: AspectId,
     pub name: String,
     /// Default value as Any (type-erased)
-    pub default_value: Box<dyn Any + Send + Sync>,
+    pub default_value: Box<dyn ClonableAny>,
     pub default_type_id: TypeId,
     pub default_type_name: String,
     /// Type-erased bounds
@@ -108,7 +155,7 @@ impl Clone for AspectBlueprint {
         Self {
             id: self.id,
             name: self.name.clone(),
-            default_value: clone_any(&self.default_value),
+            default_value: self.default_value.clone_box(),
             default_type_id: self.default_type_id,
             default_type_name: self.default_type_name.clone(),
             bounds: self.bounds.clone(),
@@ -118,7 +165,7 @@ impl Clone for AspectBlueprint {
 
 impl AspectBlueprint {
     /// Create a new AspectBlueprint
-    pub fn new<T: Any + Send + Sync + 'static>(
+    pub fn new<T: Any + Send + Sync + Clone + PartialEq + std::fmt::Debug + 'static>(
         id: AspectId,
         name: impl Into<String>,
         default_value: T,
@@ -126,7 +173,7 @@ impl AspectBlueprint {
         Self {
             id,
             name: name.into(),
-            default_value: Box::new(default_value),
+            default_value: Box::new(default_value) as Box<dyn ClonableAny>,
             default_type_id: TypeId::of::<T>(),
             default_type_name: std::any::type_name::<T>().to_string(),
             bounds: None,
@@ -148,7 +195,7 @@ impl AspectBlueprint {
     }
 
     /// Set min and max bounds (convenience method)
-    pub fn with_range<T: 'static + Send + Sync>(mut self, min: T, max: T) -> Self {
+    pub fn with_range<T: 'static + Send + Sync + Clone + PartialEq + std::fmt::Debug>(mut self, min: T, max: T) -> Self {
         // Validate type consistency
         if TypeId::of::<T>() != self.default_type_id {
             panic!(
@@ -163,7 +210,7 @@ impl AspectBlueprint {
     }
 
     /// Set min bound only
-    pub fn with_min<T: 'static + Send + Sync>(mut self, min: T) -> Self {
+    pub fn with_min<T: 'static + Send + Sync + Clone + PartialEq + std::fmt::Debug>(mut self, min: T) -> Self {
         // Validate type consistency
         if TypeId::of::<T>() != self.default_type_id {
             panic!(
@@ -178,7 +225,7 @@ impl AspectBlueprint {
     }
 
     /// Set max bound only
-    pub fn with_max<T: 'static + Send + Sync>(mut self, max: T) -> Self {
+    pub fn with_max<T: 'static + Send + Sync + Clone + PartialEq + std::fmt::Debug>(mut self, max: T) -> Self {
         // Validate type consistency
         if TypeId::of::<T>() != self.default_type_id {
             panic!(
@@ -200,7 +247,7 @@ impl AspectBlueprint {
     /// Safely get the default value as a specific type
     pub fn get_default_as<T: 'static>(&self) -> Option<&T> {
         if self.is_type::<T>() {
-            self.default_value.downcast_ref()
+            self.default_value.as_any().downcast_ref()
         } else {
             None
         }
@@ -215,7 +262,7 @@ impl AspectBlueprint {
 #[derive(Debug, Default)]
 pub struct State {
     /// Map from aspect ID to its current value (type-erased)
-    values: HashMap<AspectId, Box<dyn Any + Send + Sync>>,
+    values: HashMap<AspectId, Box<dyn ClonableAny>>,
     /// Map from aspect ID to its TypeId (for runtime type checking)
     type_ids: HashMap<AspectId, TypeId>,
 }
@@ -224,7 +271,7 @@ impl Clone for State {
     fn clone(&self) -> Self {
         let mut new_state = State::new();
         for (key, value) in &self.values {
-            new_state.values.insert(*key, clone_any(value));
+            new_state.values.insert(*key, value.clone_box());
         }
         new_state.type_ids = self.type_ids.clone();
         new_state
@@ -241,7 +288,7 @@ impl PartialEq for State {
                 if (**value).type_id() != (**other_value).type_id() {
                     return false;
                 }
-                if !eq_any(value, other_value) {
+                if !value.eq_box(other_value.as_ref()) {
                     return false;
                 }
             } else {
@@ -262,13 +309,13 @@ impl State {
     }
 
     /// Get the type-erased value of a specific aspect
-    pub fn get(&self, aspect_id: AspectId) -> Option<&(dyn Any + Send + Sync)> {
+    pub fn get(&self, aspect_id: AspectId) -> Option<&(dyn ClonableAny)> {
         self.values.get(&aspect_id).map(|boxed| boxed.as_ref())
     }
 
-    /// Get the value of a specific aspect as a specific type
+/// Get the value of a specific aspect as a specific type
     pub fn get_as<T: 'static>(&self, aspect_id: AspectId) -> Option<&T> {
-        self.get(aspect_id).and_then(|boxed| boxed.downcast_ref())
+        self.values.get(&aspect_id).and_then(|boxed| boxed.as_any().downcast_ref())
     }
 
     /// Set the value of a specific aspect, returning a new state
@@ -283,12 +330,12 @@ impl State {
     /// # Examples
     /// ```ignore
     /// let state = State::new();
-    /// let state1 = state.set(AspectId(0), Box::new(42i64));  // OK: first time, type is i64
-    /// let state2 = state1.set(AspectId(0), Box::new(100i64));  // OK: same type
-    /// let state3 = state2.set(AspectId(0), Box::new("hello".to_string()));  // PANIC: type mismatch!
+    /// let state1 = state.set(AspectId(0), Box::new(42i64) as Box<dyn ClonableAny>);  // OK: first time, type is i64
+    /// let state2 = state1.set(AspectId(0), Box::new(100i64) as Box<dyn ClonableAny>);  // OK: same type
+    /// let state3 = state2.set(AspectId(0), Box::new("hello".to_string()) as Box<dyn ClonableAny>);  // PANIC: type mismatch!
     /// ```
-    pub fn set(&self, aspect_id: AspectId, value: Box<dyn Any + Send + Sync>) -> Self {
-        let new_type_id = get_type_id_of_any(&value);
+    pub fn set(&self, aspect_id: AspectId, value: Box<dyn ClonableAny>) -> Self {
+        let new_type_id = value.as_any().type_id();
 
         // Check if this AspectId already exists with a different type
         if let Some(&existing_type_id) = self.type_ids.get(&aspect_id) {
@@ -324,7 +371,7 @@ impl State {
     /// let state2 = state1.set_typed(AspectId(0), 100i64);  // OK: same type
     /// let state3 = state2.set_typed(AspectId(0), "hello");  // PANIC: type mismatch!
     /// ```
-    pub fn set_typed<T: Any + Send + Sync + 'static>(&self, aspect_id: AspectId, value: T) -> Self {
+    pub fn set_typed<T: Any + Send + Sync + Clone + PartialEq + std::fmt::Debug + 'static>(&self, aspect_id: AspectId, value: T) -> Self {
         let new_type_id = TypeId::of::<T>();
 
         // Check if this AspectId already exists with a different type
@@ -342,7 +389,7 @@ impl State {
         }
 
         let mut new_state = self.clone();
-        new_state.values.insert(aspect_id, Box::new(value));
+        new_state.values.insert(aspect_id, Box::new(value) as Box<dyn ClonableAny>);
         new_state.type_ids.insert(aspect_id, new_type_id);
         new_state
     }
@@ -350,15 +397,15 @@ impl State {
     /// Helper method to get type name for better error messages
     fn get_type_name(&self, aspect_id: AspectId) -> Option<&'static str> {
         if let Some(value) = self.values.get(&aspect_id) {
-            if let Some(_) = value.downcast_ref::<bool>() {
+            if let Some(_) = value.as_any().downcast_ref::<bool>() {
                 return Some("bool");
-            } else if let Some(_) = value.downcast_ref::<i64>() {
+            } else if let Some(_) = value.as_any().downcast_ref::<i64>() {
                 return Some("i64");
-            } else if let Some(_) = value.downcast_ref::<f64>() {
+            } else if let Some(_) = value.as_any().downcast_ref::<f64>() {
                 return Some("f64");
-            } else if let Some(_) = value.downcast_ref::<String>() {
+            } else if let Some(_) = value.as_any().downcast_ref::<String>() {
                 return Some("String");
-            } else if let Some(_) = value.downcast_ref::<i32>() {
+            } else if let Some(_) = value.as_any().downcast_ref::<i32>() {
                 return Some("i32");
             }
         }
@@ -397,8 +444,8 @@ impl State {
         expected_type_id: TypeId,
     ) -> Option<&T> {
         if let Some(value) = self.get(aspect_id) {
-            if value.type_id() == expected_type_id {
-                value.downcast_ref()
+            if value.as_any().type_id() == expected_type_id {
+                value.as_any().downcast_ref()
             } else {
                 None
             }
@@ -410,7 +457,7 @@ impl State {
 
 /// Builder for constructing State instances
 pub struct StateBuilder {
-    values: HashMap<AspectId, Box<dyn Any + Send + Sync>>,
+    values: HashMap<AspectId, Box<dyn ClonableAny>>,
     type_ids: HashMap<AspectId, TypeId>,
 }
 
@@ -423,17 +470,17 @@ impl StateBuilder {
     }
 
     /// Set a type-erased value
-    pub fn set(mut self, aspect_id: AspectId, value: Box<dyn Any + Send + Sync>) -> Self {
-        let type_id = get_type_id_of_any(&value);
+    pub fn set(mut self, aspect_id: AspectId, value: Box<dyn ClonableAny>) -> Self {
+        let type_id = value.as_any().type_id();
         self.values.insert(aspect_id, value);
         self.type_ids.insert(aspect_id, type_id);
         self
     }
 
     /// Set a typed value
-    pub fn set_typed<T: Any + Send + Sync + 'static>(mut self, aspect_id: AspectId, value: T) -> Self {
+    pub fn set_typed<T: Any + Send + Sync + Clone + PartialEq + std::fmt::Debug + 'static>(mut self, aspect_id: AspectId, value: T) -> Self {
         let type_id = TypeId::of::<T>();
-        self.values.insert(aspect_id, Box::new(value));
+        self.values.insert(aspect_id, Box::new(value) as Box<dyn ClonableAny>);
         self.type_ids.insert(aspect_id, type_id);
         self
     }
@@ -469,132 +516,6 @@ impl StateBuilder {
 impl Default for StateBuilder {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Helper function to create a Box<dyn Any + Send + Sync> from common types
-pub fn any_value<T: Any + Send + Sync>(value: T) -> Box<dyn Any + Send + Sync> {
-    Box::new(value)
-}
-
-// ============================================================================
-// UTILITY FUNCTIONS FOR TYPE ERASURE
-// ============================================================================
-
-/// Get the TypeId of a type-erased value
-fn get_type_id_of_any(value: &Box<dyn Any + Send + Sync>) -> TypeId {
-    if let Some(_) = value.downcast_ref::<bool>() {
-        TypeId::of::<bool>()
-    } else if let Some(_) = value.downcast_ref::<i64>() {
-        TypeId::of::<i64>()
-    } else if let Some(_) = value.downcast_ref::<f64>() {
-        TypeId::of::<f64>()
-    } else if let Some(_) = value.downcast_ref::<String>() {
-        TypeId::of::<String>()
-    } else if let Some(_) = value.downcast_ref::<i32>() {
-        TypeId::of::<i32>()
-    } else if let Some(_) = value.downcast_ref::<usize>() {
-        TypeId::of::<usize>()
-    } else if let Some(_) = value.downcast_ref::<u32>() {
-        TypeId::of::<u32>()
-    } else if let Some(_) = value.downcast_ref::<u64>() {
-        TypeId::of::<u64>()
-    } else if let Some(_) = value.downcast_ref::<char>() {
-        TypeId::of::<char>()
-    } else if let Some(_) = value.downcast_ref::<Vec<u8>>() {
-        TypeId::of::<Vec<u8>>()
-    } else if let Some(_) = value.downcast_ref::<Vec<String>>() {
-        TypeId::of::<Vec<String>>()
-    } else if let Some(_) = value.downcast_ref::<Vec<i64>>() {
-        TypeId::of::<Vec<i64>>()
-    } else if let Some(_) = value.downcast_ref::<Vec<f64>>() {
-        TypeId::of::<Vec<f64>>()
-    } else if let Some(_) = value.downcast_ref::<Vec<bool>>() {
-        TypeId::of::<Vec<bool>>()
-    } else {
-        // For unsupported types, return the TypeId of the trait object
-        (**value).type_id()
-    }
-}
-
-/// Clone a type-erased value
-///
-/// This function provides a safe way to clone type-erased values for a limited
-/// set of common types. For unsupported types, it returns a unit value as a fallback.
-pub fn clone_any(value: &Box<dyn Any + Send + Sync>) -> Box<dyn Any + Send + Sync> {
-    if let Some(b) = value.downcast_ref::<bool>() {
-        Box::new(*b) as Box<dyn Any + Send + Sync>
-    } else if let Some(i) = value.downcast_ref::<i64>() {
-        Box::new(*i) as Box<dyn Any + Send + Sync>
-    } else if let Some(f) = value.downcast_ref::<f64>() {
-        Box::new(*f) as Box<dyn Any + Send + Sync>
-    } else if let Some(s) = value.downcast_ref::<String>() {
-        Box::new(s.clone()) as Box<dyn Any + Send + Sync>
-    } else if let Some(i) = value.downcast_ref::<i32>() {
-        Box::new(*i) as Box<dyn Any + Send + Sync>
-    } else if let Some(u) = value.downcast_ref::<usize>() {
-        Box::new(*u) as Box<dyn Any + Send + Sync>
-    } else if let Some(u) = value.downcast_ref::<u32>() {
-        Box::new(*u) as Box<dyn Any + Send + Sync>
-    } else if let Some(u) = value.downcast_ref::<u64>() {
-        Box::new(*u) as Box<dyn Any + Send + Sync>
-    } else if let Some(c) = value.downcast_ref::<char>() {
-        Box::new(*c) as Box<dyn Any + Send + Sync>
-    } else if let Some(v) = value.downcast_ref::<Vec<u8>>() {
-        Box::new(v.clone()) as Box<dyn Any + Send + Sync>
-    } else if let Some(v) = value.downcast_ref::<Vec<String>>() {
-        Box::new(v.clone()) as Box<dyn Any + Send + Sync>
-    } else if let Some(v) = value.downcast_ref::<Vec<i64>>() {
-        Box::new(v.clone()) as Box<dyn Any + Send + Sync>
-    } else if let Some(v) = value.downcast_ref::<Vec<f64>>() {
-        Box::new(v.clone()) as Box<dyn Any + Send + Sync>
-    } else if let Some(v) = value.downcast_ref::<Vec<bool>>() {
-        Box::new(v.clone()) as Box<dyn Any + Send + Sync>
-    } else {
-        // For unsupported types, return a unit value as fallback
-        // This is defensive programming to prevent panics
-        // TODO: Consider returning an error instead
-        Box::new(()) as Box<dyn Any + Send + Sync>
-    }
-}
-
-/// Compare two type-erased values for equality
-///
-/// This function provides a safe way to compare type-erased values for a limited
-/// set of common types. For unsupported types, it returns false.
-pub fn eq_any(a: &Box<dyn Any + Send + Sync>, b: &Box<dyn Any + Send + Sync>) -> bool {
-    if let (Some(a_bool), Some(b_bool)) = (a.downcast_ref::<bool>(), b.downcast_ref::<bool>()) {
-        a_bool == b_bool
-    } else if let (Some(a_i64), Some(b_i64)) = (a.downcast_ref::<i64>(), b.downcast_ref::<i64>()) {
-        a_i64 == b_i64
-    } else if let (Some(a_f64), Some(b_f64)) = (a.downcast_ref::<f64>(), b.downcast_ref::<f64>()) {
-        a_f64 == b_f64
-    } else if let (Some(a_str), Some(b_str)) = (a.downcast_ref::<String>(), b.downcast_ref::<String>()) {
-        a_str == b_str
-    } else if let (Some(a_i32), Some(b_i32)) = (a.downcast_ref::<i32>(), b.downcast_ref::<i32>()) {
-        a_i32 == b_i32
-    } else if let (Some(a_usize), Some(b_usize)) = (a.downcast_ref::<usize>(), b.downcast_ref::<usize>()) {
-        a_usize == b_usize
-    } else if let (Some(a_u32), Some(b_u32)) = (a.downcast_ref::<u32>(), b.downcast_ref::<u32>()) {
-        a_u32 == b_u32
-    } else if let (Some(a_u64), Some(b_u64)) = (a.downcast_ref::<u64>(), b.downcast_ref::<u64>()) {
-        a_u64 == b_u64
-    } else if let (Some(a_char), Some(b_char)) = (a.downcast_ref::<char>(), b.downcast_ref::<char>()) {
-        a_char == b_char
-    } else if let (Some(a_vec), Some(b_vec)) = (a.downcast_ref::<Vec<u8>>(), b.downcast_ref::<Vec<u8>>()) {
-        a_vec == b_vec
-    } else if let (Some(a_vec), Some(b_vec)) = (a.downcast_ref::<Vec<String>>(), b.downcast_ref::<Vec<String>>()) {
-        a_vec == b_vec
-    } else if let (Some(a_vec), Some(b_vec)) = (a.downcast_ref::<Vec<i64>>(), b.downcast_ref::<Vec<i64>>()) {
-        a_vec == b_vec
-    } else if let (Some(a_vec), Some(b_vec)) = (a.downcast_ref::<Vec<f64>>(), b.downcast_ref::<Vec<f64>>()) {
-        a_vec == b_vec
-    } else if let (Some(a_vec), Some(b_vec)) = (a.downcast_ref::<Vec<bool>>(), b.downcast_ref::<Vec<bool>>()) {
-        a_vec == b_vec
-    } else {
-        // For unsupported types, assume they are not equal
-        // This is defensive programming to prevent panics
-        false
     }
 }
 

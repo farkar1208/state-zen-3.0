@@ -10,7 +10,7 @@ pub mod runtime;
 pub use aspect::{
     AspectId, State, StateBuilder,
     AspectBlueprint, AspectBoundsBlueprint,
-    clone_any, eq_any, any_value,
+    ClonableAny,
 };
 pub use active_in::{ActiveIn, ActiveInBlueprint, ActiveInFactory, Predicate};
 pub use zone::{Zone, ZoneBlueprint, ZoneId};
@@ -24,7 +24,7 @@ pub mod prelude {
     pub use crate::aspect::{
         AspectId, State, StateBuilder,
         AspectBlueprint, AspectBoundsBlueprint,
-        clone_any, eq_any, any_value,
+        ClonableAny,
     };
     pub use crate::active_in::{ActiveIn, ActiveInBlueprint, ActiveInFactory, Predicate};
     pub use crate::zone::{Zone, ZoneBlueprint, ZoneId};

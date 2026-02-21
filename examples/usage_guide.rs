@@ -243,13 +243,13 @@ fn print_state(runtime: &StateMachineRuntime) {
     for aspect in runtime.blueprint().aspects() {
         if let Some(value) = runtime.state().get(aspect.id) {
             // Try to format common types
-            if let Some(b) = value.downcast_ref::<bool>() {
+            if let Some(b) = value.as_any().downcast_ref::<bool>() {
                 println!("     {} = {}", aspect.name, b);
-            } else if let Some(i) = value.downcast_ref::<i64>() {
+            } else if let Some(i) = value.as_any().downcast_ref::<i64>() {
                 println!("     {} = {}", aspect.name, i);
-            } else if let Some(f) = value.downcast_ref::<f64>() {
+            } else if let Some(f) = value.as_any().downcast_ref::<f64>() {
                 println!("     {} = {}", aspect.name, f);
-            } else if let Some(s) = value.downcast_ref::<String>() {
+            } else if let Some(s) = value.as_any().downcast_ref::<String>() {
                 println!("     {} = {}", aspect.name, s);
             } else {
                 println!("     {} = {:?}", aspect.name, value);

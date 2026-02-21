@@ -1,5 +1,6 @@
 use crate::aspect::{AspectId, State};
 use crate::active_in::ActiveInBlueprint;
+use crate::aspect::ClonableAny;
 use std::any::Any;
 use std::sync::Arc;
 
@@ -198,8 +199,8 @@ impl Clone for Update {
 /// Internal representation of update operations (runtime layer)
 enum UpdateOp {
     Noop,
-    Set(AspectId, Box<dyn Any + Send + Sync>),
-    Modify(AspectId, Arc<dyn Fn(Box<dyn Any + Send + Sync>) -> Box<dyn Any + Send + Sync> + Send + Sync>),
+    Set(AspectId, Box<dyn ClonableAny>),
+    Modify(AspectId, Arc<dyn Fn(Box<dyn ClonableAny>) -> Box<dyn ClonableAny> + Send + Sync>),
     Compose(Vec<Update>),
     Conditional {
         predicate: Arc<dyn Fn(&State) -> bool + Send + Sync>,
@@ -224,21 +225,21 @@ impl Update {
     }
 
     /// Set an aspect to a specific value (type-erased)
-    pub fn set(aspect_id: AspectId, value: Box<dyn Any + Send + Sync>) -> Self {
+    pub fn set(aspect_id: AspectId, value: Box<dyn ClonableAny>) -> Self {
         Self {
             operation: Arc::new(UpdateOp::Set(aspect_id, value)),
         }
     }
 
     /// Set a typed value
-    pub fn set_typed<T: Any + Send + Sync>(aspect_id: AspectId, value: T) -> Self {
-        Self::set(aspect_id, Box::new(value))
+    pub fn set_typed<T: Any + Send + Sync + Clone + PartialEq + std::fmt::Debug>(aspect_id: AspectId, value: T) -> Self {
+        Self::set(aspect_id, Box::new(value) as Box<dyn ClonableAny>)
     }
 
     /// Modify an aspect's value using a transformation function
     pub fn modify<F>(aspect_id: AspectId, f: F) -> Self
     where
-        F: Fn(Box<dyn Any + Send + Sync>) -> Box<dyn Any + Send + Sync> + Send + Sync + 'static,
+        F: Fn(Box<dyn ClonableAny>) -> Box<dyn ClonableAny> + Send + Sync + 'static,
     {
         Self {
             operation: Arc::new(UpdateOp::Modify(aspect_id, Arc::new(f))),
@@ -268,8 +269,8 @@ impl Update {
     /// Increment an integer aspect
     pub fn increment(aspect_id: AspectId) -> Self {
         Self::modify(aspect_id, |boxed| {
-            if let Some(i) = boxed.downcast_ref::<i64>() {
-                Box::new(*i + 1)
+            if let Some(i) = boxed.as_any().downcast_ref::<i64>() {
+                Box::new(*i + 1) as Box<dyn ClonableAny>
             } else {
                 boxed
             }
@@ -279,8 +280,8 @@ impl Update {
     /// Decrement an integer aspect
     pub fn decrement(aspect_id: AspectId) -> Self {
         Self::modify(aspect_id, |boxed| {
-            if let Some(i) = boxed.downcast_ref::<i64>() {
-                Box::new(*i - 1)
+            if let Some(i) = boxed.as_any().downcast_ref::<i64>() {
+                Box::new(*i - 1) as Box<dyn ClonableAny>
             } else {
                 boxed
             }
@@ -290,8 +291,8 @@ impl Update {
     /// Add a delta to an integer aspect
     pub fn add(aspect_id: AspectId, delta: i64) -> Self {
         Self::modify(aspect_id, move |boxed| {
-            if let Some(i) = boxed.downcast_ref::<i64>() {
-                Box::new(*i + delta)
+            if let Some(i) = boxed.as_any().downcast_ref::<i64>() {
+                Box::new(*i + delta) as Box<dyn ClonableAny>
             } else {
                 boxed
             }
@@ -301,8 +302,8 @@ impl Update {
     /// Toggle a boolean aspect
     pub fn toggle(aspect_id: AspectId) -> Self {
         Self::modify(aspect_id, |boxed| {
-            if let Some(b) = boxed.downcast_ref::<bool>() {
-                Box::new(!*b)
+            if let Some(b) = boxed.as_any().downcast_ref::<bool>() {
+                Box::new(!*b) as Box<dyn ClonableAny>
             } else {
                 boxed
             }
@@ -312,12 +313,12 @@ impl Update {
     /// Generic modify for any type
     pub fn modify_typed<T, F>(aspect_id: AspectId, f: F) -> Self
     where
-        T: Any + Send + Sync + Clone,
+        T: Any + Send + Sync + Clone + PartialEq + std::fmt::Debug,
         F: Fn(T) -> T + Send + Sync + 'static,
     {
         Self::modify(aspect_id, move |boxed| {
-            if let Some(value) = boxed.downcast_ref::<T>() {
-                Box::new(f(value.clone()))
+            if let Some(value) = boxed.as_any().downcast_ref::<T>() {
+                Box::new(f(value.clone())) as Box<dyn ClonableAny>
             } else {
                 boxed
             }
@@ -374,15 +375,15 @@ impl Update {
         match &*self.operation {
             UpdateOp::Noop => state,
             UpdateOp::Set(aspect_id, value) => {
-                if let Some(b) = value.downcast_ref::<bool>() {
+                if let Some(b) = value.as_any().downcast_ref::<bool>() {
                     state.set_typed(*aspect_id, *b)
-                } else if let Some(i) = value.downcast_ref::<i64>() {
+                } else if let Some(i) = value.as_any().downcast_ref::<i64>() {
                     state.set_typed(*aspect_id, *i)
-                } else if let Some(f) = value.downcast_ref::<f64>() {
+                } else if let Some(f) = value.as_any().downcast_ref::<f64>() {
                     state.set_typed(*aspect_id, *f)
-                } else if let Some(s) = value.downcast_ref::<String>() {
+                } else if let Some(s) = value.as_any().downcast_ref::<String>() {
                     state.set_typed(*aspect_id, s.clone())
-                } else if let Some(i) = value.downcast_ref::<i32>() {
+                } else if let Some(i) = value.as_any().downcast_ref::<i32>() {
                     state.set_typed(*aspect_id, *i)
                 } else {
                     state
@@ -391,16 +392,16 @@ impl Update {
             UpdateOp::Modify(aspect_id, f) => {
                 let state_cloned = state.clone();
                 if let Some(v) = state_cloned.get(*aspect_id) {
-                    let boxed_clone: Box<dyn Any + Send + Sync> = if let Some(b) = v.downcast_ref::<bool>() {
-                        Box::new(*b)
-                    } else if let Some(i) = v.downcast_ref::<i64>() {
-                        Box::new(*i)
-                    } else if let Some(f) = v.downcast_ref::<f64>() {
-                        Box::new(*f)
-                    } else if let Some(s) = v.downcast_ref::<String>() {
-                        Box::new(s.clone())
-                    } else if let Some(i) = v.downcast_ref::<i32>() {
-                        Box::new(*i)
+                    let boxed_clone: Box<dyn ClonableAny> = if let Some(b) = v.as_any().downcast_ref::<bool>() {
+                        Box::new(*b) as Box<dyn ClonableAny>
+                    } else if let Some(i) = v.as_any().downcast_ref::<i64>() {
+                        Box::new(*i) as Box<dyn ClonableAny>
+                    } else if let Some(f) = v.as_any().downcast_ref::<f64>() {
+                        Box::new(*f) as Box<dyn ClonableAny>
+                    } else if let Some(s) = v.as_any().downcast_ref::<String>() {
+                        Box::new(s.clone()) as Box<dyn ClonableAny>
+                    } else if let Some(i) = v.as_any().downcast_ref::<i32>() {
+                        Box::new(*i) as Box<dyn ClonableAny>
                     } else {
                         return state_cloned;
                     };
@@ -436,41 +437,41 @@ fn compile_update(blueprint: UpdateBlueprint) -> UpdateOp {
     match blueprint {
         UpdateBlueprint::Noop => UpdateOp::Noop,
         UpdateBlueprint::Set { aspect_id, value } => {
-            let boxed: Box<dyn Any + Send + Sync> = match value {
-                BlueprintValue::Bool(b) => Box::new(b),
-                BlueprintValue::Integer(i) => Box::new(i),
-                BlueprintValue::Float(f) => Box::new(f),
-                BlueprintValue::String(s) => Box::new(s),
+            let boxed: Box<dyn ClonableAny> = match value {
+                BlueprintValue::Bool(b) => Box::new(b) as Box<dyn ClonableAny>,
+                BlueprintValue::Integer(i) => Box::new(i) as Box<dyn ClonableAny>,
+                BlueprintValue::Float(f) => Box::new(f) as Box<dyn ClonableAny>,
+                BlueprintValue::String(s) => Box::new(s) as Box<dyn ClonableAny>,
             };
             UpdateOp::Set(aspect_id, boxed)
         }
         UpdateBlueprint::Modify { aspect_id, type_id: _, op } => {
-            let f: Arc<dyn Fn(Box<dyn Any + Send + Sync>) -> Box<dyn Any + Send + Sync> + Send + Sync> =
+            let f: Arc<dyn Fn(Box<dyn ClonableAny>) -> Box<dyn ClonableAny> + Send + Sync> =
                 match op {
                     ModifyOp::Increment => Arc::new(|boxed| {
-                        if let Some(i) = boxed.downcast_ref::<i64>() {
-                            Box::new(*i + 1)
+                        if let Some(i) = boxed.as_any().downcast_ref::<i64>() {
+                            Box::new(*i + 1) as Box<dyn ClonableAny>
                         } else {
                             boxed
                         }
                     }),
                     ModifyOp::Decrement => Arc::new(|boxed| {
-                        if let Some(i) = boxed.downcast_ref::<i64>() {
-                            Box::new(*i - 1)
+                        if let Some(i) = boxed.as_any().downcast_ref::<i64>() {
+                            Box::new(*i - 1) as Box<dyn ClonableAny>
                         } else {
                             boxed
                         }
                     }),
                     ModifyOp::Add(delta) => Arc::new(move |boxed| {
-                        if let Some(i) = boxed.downcast_ref::<i64>() {
-                            Box::new(*i + delta)
+                        if let Some(i) = boxed.as_any().downcast_ref::<i64>() {
+                            Box::new(*i + delta) as Box<dyn ClonableAny>
                         } else {
                             boxed
                         }
                     }),
                     ModifyOp::Toggle => Arc::new(|boxed| {
-                        if let Some(b) = boxed.downcast_ref::<bool>() {
-                            Box::new(!*b)
+                        if let Some(b) = boxed.as_any().downcast_ref::<bool>() {
+                            Box::new(!*b) as Box<dyn ClonableAny>
                         } else {
                             boxed
                         }
