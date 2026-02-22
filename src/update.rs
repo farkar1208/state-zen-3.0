@@ -375,37 +375,12 @@ impl Update {
         match &*self.operation {
             UpdateOp::Noop => state,
             UpdateOp::Set(aspect_id, value) => {
-                if let Some(b) = value.as_any().downcast_ref::<bool>() {
-                    state.set_typed(*aspect_id, *b)
-                } else if let Some(i) = value.as_any().downcast_ref::<i64>() {
-                    state.set_typed(*aspect_id, *i)
-                } else if let Some(f) = value.as_any().downcast_ref::<f64>() {
-                    state.set_typed(*aspect_id, *f)
-                } else if let Some(s) = value.as_any().downcast_ref::<String>() {
-                    state.set_typed(*aspect_id, s.clone())
-                } else if let Some(i) = value.as_any().downcast_ref::<i32>() {
-                    state.set_typed(*aspect_id, *i)
-                } else {
-                    state
-                }
+                state.set(*aspect_id, value.clone_box())
             }
             UpdateOp::Modify(aspect_id, f) => {
                 let state_cloned = state.clone();
                 if let Some(v) = state_cloned.get(*aspect_id) {
-                    let boxed_clone: Box<dyn ClonableAny> = if let Some(b) = v.as_any().downcast_ref::<bool>() {
-                        Box::new(*b) as Box<dyn ClonableAny>
-                    } else if let Some(i) = v.as_any().downcast_ref::<i64>() {
-                        Box::new(*i) as Box<dyn ClonableAny>
-                    } else if let Some(f) = v.as_any().downcast_ref::<f64>() {
-                        Box::new(*f) as Box<dyn ClonableAny>
-                    } else if let Some(s) = v.as_any().downcast_ref::<String>() {
-                        Box::new(s.clone()) as Box<dyn ClonableAny>
-                    } else if let Some(i) = v.as_any().downcast_ref::<i32>() {
-                        Box::new(*i) as Box<dyn ClonableAny>
-                    } else {
-                        return state_cloned;
-                    };
-                    state_cloned.set(*aspect_id, f(boxed_clone))
+                    state_cloned.set(*aspect_id, f(v.clone_box()))
                 } else {
                     state_cloned
                 }

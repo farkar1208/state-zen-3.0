@@ -3,7 +3,7 @@ use crate::aspect::AspectBlueprint;
 use crate::state::State;
 use crate::zone::Zone;
 use crate::transition::Transition;
-use std::any::{Any, TypeId};
+use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
 
 /// Type-erased aspect descriptor
@@ -19,43 +19,12 @@ pub struct AspectDescriptor {
 
 impl Clone for AspectDescriptor {
     fn clone(&self) -> Self {
-        let cloned_value: Box<dyn ClonableAny> = if let Some(b) = self.default_value.as_any().downcast_ref::<bool>() {
-            Box::new(*b) as Box<dyn ClonableAny>
-        } else if let Some(i) = self.default_value.as_any().downcast_ref::<i64>() {
-            Box::new(*i) as Box<dyn ClonableAny>
-        } else if let Some(f) = self.default_value.as_any().downcast_ref::<f64>() {
-            Box::new(*f) as Box<dyn ClonableAny>
-        } else if let Some(s) = self.default_value.as_any().downcast_ref::<String>() {
-            Box::new(s.clone()) as Box<dyn ClonableAny>
-        } else if let Some(i) = self.default_value.as_any().downcast_ref::<i32>() {
-            Box::new(*i) as Box<dyn ClonableAny>
-        } else if let Some(u) = self.default_value.as_any().downcast_ref::<usize>() {
-            Box::new(*u) as Box<dyn ClonableAny>
-        } else if let Some(u) = self.default_value.as_any().downcast_ref::<u32>() {
-            Box::new(*u) as Box<dyn ClonableAny>
-        } else if let Some(u) = self.default_value.as_any().downcast_ref::<u64>() {
-            Box::new(*u) as Box<dyn ClonableAny>
-        } else if let Some(c) = self.default_value.as_any().downcast_ref::<char>() {
-            Box::new(*c) as Box<dyn ClonableAny>
-        } else if let Some(v) = self.default_value.as_any().downcast_ref::<Vec<u8>>() {
-            Box::new(v.clone()) as Box<dyn ClonableAny>
-        } else if let Some(v) = self.default_value.as_any().downcast_ref::<Vec<String>>() {
-            Box::new(v.clone()) as Box<dyn ClonableAny>
-        } else if let Some(v) = self.default_value.as_any().downcast_ref::<Vec<i64>>() {
-            Box::new(v.clone()) as Box<dyn ClonableAny>
-        } else if let Some(v) = self.default_value.as_any().downcast_ref::<Vec<f64>>() {
-            Box::new(v.clone()) as Box<dyn ClonableAny>
-        } else if let Some(v) = self.default_value.as_any().downcast_ref::<Vec<bool>>() {
-            Box::new(v.clone()) as Box<dyn ClonableAny>
-        } else {
-            Box::new(()) as Box<dyn ClonableAny>
-        };
-
+        // Use ClonableAny::clone_box() to support all types implementing ClonableAny
         Self {
             id: self.id,
             name: self.name.clone(),
             type_id: self.type_id,
-            default_value: cloned_value,
+            default_value: self.default_value.clone_box(),
             has_min: self.has_min,
             has_max: self.has_max,
         }
@@ -162,38 +131,8 @@ impl StateMachineBlueprint {
     pub fn create_initial_state(&self) -> State {
         let mut builder = crate::state::StateBuilder::new();
         for descriptor in self.aspects.values() {
-            let cloned_value: Box<dyn ClonableAny> = if let Some(b) = descriptor.default_value.as_any().downcast_ref::<bool>() {
-                Box::new(*b) as Box<dyn ClonableAny>
-            } else if let Some(i) = descriptor.default_value.as_any().downcast_ref::<i64>() {
-                Box::new(*i) as Box<dyn ClonableAny>
-            } else if let Some(f) = descriptor.default_value.as_any().downcast_ref::<f64>() {
-                Box::new(*f) as Box<dyn ClonableAny>
-            } else if let Some(s) = descriptor.default_value.as_any().downcast_ref::<String>() {
-                Box::new(s.clone()) as Box<dyn ClonableAny>
-            } else if let Some(i) = descriptor.default_value.as_any().downcast_ref::<i32>() {
-                Box::new(*i) as Box<dyn ClonableAny>
-            } else if let Some(u) = descriptor.default_value.as_any().downcast_ref::<usize>() {
-                Box::new(*u) as Box<dyn ClonableAny>
-            } else if let Some(u) = descriptor.default_value.as_any().downcast_ref::<u32>() {
-                Box::new(*u) as Box<dyn ClonableAny>
-            } else if let Some(u) = descriptor.default_value.as_any().downcast_ref::<u64>() {
-                Box::new(*u) as Box<dyn ClonableAny>
-            } else if let Some(c) = descriptor.default_value.as_any().downcast_ref::<char>() {
-                Box::new(*c) as Box<dyn ClonableAny>
-            } else if let Some(v) = descriptor.default_value.as_any().downcast_ref::<Vec<u8>>() {
-                Box::new(v.clone()) as Box<dyn ClonableAny>
-            } else if let Some(v) = descriptor.default_value.as_any().downcast_ref::<Vec<String>>() {
-                Box::new(v.clone()) as Box<dyn ClonableAny>
-            } else if let Some(v) = descriptor.default_value.as_any().downcast_ref::<Vec<i64>>() {
-                Box::new(v.clone()) as Box<dyn ClonableAny>
-            } else if let Some(v) = descriptor.default_value.as_any().downcast_ref::<Vec<f64>>() {
-                Box::new(v.clone()) as Box<dyn ClonableAny>
-            } else if let Some(v) = descriptor.default_value.as_any().downcast_ref::<Vec<bool>>() {
-                Box::new(v.clone()) as Box<dyn ClonableAny>
-            } else {
-                continue;
-            };
-            builder = builder.set(descriptor.id, cloned_value);
+            // Use ClonableAny::clone_box() to support all types implementing ClonableAny
+            builder = builder.set(descriptor.id, descriptor.default_value.clone_box());
         }
         builder.build()
     }
