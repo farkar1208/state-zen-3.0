@@ -1,7 +1,7 @@
 use crate::blueprint::StateMachineBlueprint;
-use crate::transition::EventId;
+use crate::core::EventId;
 use crate::zone::ZoneId;
-use crate::aspect::State;
+use crate::state::State;
 use std::collections::HashMap;
 
 /// Runtime state machine instance

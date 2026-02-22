@@ -1,7 +1,8 @@
-use crate::aspect::{AspectId, State, AspectBlueprint};
+use crate::core::{AspectId, ClonableAny, EventId};
+use crate::aspect::AspectBlueprint;
+use crate::state::State;
 use crate::zone::Zone;
-use crate::transition::{EventId, Transition};
-use crate::aspect::ClonableAny;
+use crate::transition::Transition;
 use std::any::{Any, TypeId};
 use std::collections::{HashMap, HashSet};
 
@@ -159,7 +160,7 @@ impl StateMachineBlueprint {
 
     /// Create an initial state from the blueprint's aspect defaults
     pub fn create_initial_state(&self) -> State {
-        let mut builder = crate::aspect::StateBuilder::new();
+        let mut builder = crate::state::StateBuilder::new();
         for descriptor in self.aspects.values() {
             let cloned_value: Box<dyn ClonableAny> = if let Some(b) = descriptor.default_value.as_any().downcast_ref::<bool>() {
                 Box::new(*b) as Box<dyn ClonableAny>

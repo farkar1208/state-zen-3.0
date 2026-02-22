@@ -119,7 +119,7 @@ impl Zone {
     }
 
     /// Evaluate whether this zone is active in the given state
-    pub fn is_active(&self, state: &crate::aspect::State) -> bool {
+    pub fn is_active(&self, state: &crate::state::State) -> bool {
         self.active_in.evaluate(state)
     }
 
@@ -214,8 +214,8 @@ impl Default for ZoneBuilder {
 mod tests {
     use super::*;
     use crate::active_in::ActiveInFactory;
-    use crate::aspect::AspectId;
-    use crate::aspect::StateBuilder;
+    use crate::core::AspectId;
+    use crate::state::StateBuilder;
 
     #[test]
     fn test_zone_blueprint() {

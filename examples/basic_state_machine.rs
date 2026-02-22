@@ -1,5 +1,5 @@
 use state_zen::{AspectId, AspectBlueprint, Zone, ZoneId, Transition, TransitionId, StateMachineRuntime};
-use state_zen::transition::EventId;
+use state_zen::core::EventId;
 use state_zen::active_in::ActiveInFactory;
 use state_zen::update::Update;
 use state_zen::StateMachineBlueprint;

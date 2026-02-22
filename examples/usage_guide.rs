@@ -3,7 +3,7 @@
 /// 本示例展示如何使用 state-zen 创建和运行状态机
 
 use state_zen::{AspectId, AspectBlueprint, Zone, ZoneId, Transition, TransitionId, StateMachineRuntime, StateMachineBlueprint};
-use state_zen::transition::EventId;
+use state_zen::core::EventId;
 use state_zen::active_in::ActiveInFactory;
 use state_zen::update::Update;
 

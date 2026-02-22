@@ -1,6 +1,6 @@
-use crate::aspect::{AspectId, State};
+use crate::core::{AspectId, ClonableAny};
+use crate::state::State;
 use crate::active_in::ActiveInBlueprint;
-use crate::aspect::ClonableAny;
 use std::any::Any;
 use std::sync::Arc;
 
@@ -509,7 +509,7 @@ fn compile_update(blueprint: UpdateBlueprint) -> UpdateOp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::aspect::StateBuilder;
+    use crate::state::StateBuilder;
 
     #[test]
     fn test_blueprint_noop() {

@@ -1,6 +1,7 @@
 use crate::active_in::{ActiveIn, ActiveInBlueprint};
 use crate::update::{Update, UpdateBlueprint};
-use crate::aspect::State;
+use crate::state::State;
+use crate::core::EventId;
 use std::fmt;
 
 // ============================================================================
@@ -10,16 +11,6 @@ use std::fmt;
 /// Unique identifier for a Transition
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TransitionId(pub usize);
-
-/// Unique identifier for an event type
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct EventId(pub String);
-
-impl EventId {
-    pub fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
-    }
-}
 
 // ============================================================================
 // BLUEPRINT LAYER - TransitionBlueprint (without side effects)
@@ -249,7 +240,8 @@ impl Default for TransitionBuilder {
 mod tests {
     use super::*;
     use crate::active_in::ActiveInFactory;
-    use crate::aspect::{AspectId, StateBuilder};
+    use crate::core::AspectId;
+use crate::state::StateBuilder;
     use crate::update::Update;
 
     #[test]

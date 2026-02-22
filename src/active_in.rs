@@ -1,4 +1,5 @@
-use crate::aspect::{AspectId, State};
+use crate::core::AspectId;
+use crate::state::State;
 use std::ops::Not;
 use std::sync::Arc;
 
@@ -354,7 +355,7 @@ pub(crate) fn evaluate_blueprint(blueprint: &ActiveInBlueprint, state: &State) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::aspect::StateBuilder;
+    use crate::state::StateBuilder;
 
     #[test]
     fn test_blueprint_always_never() {
