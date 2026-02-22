@@ -370,37 +370,32 @@ impl Update {
         }
     }
 
-    /// Apply this update to a state, returning a new state
-    pub fn apply(&self, state: State) -> State {
+    /// Apply this update to a state
+    pub fn apply(&self, state: &mut State) {
         match &*self.operation {
-            UpdateOp::Noop => state,
+            UpdateOp::Noop => {}
             UpdateOp::Set(aspect_id, value) => {
                 state.set(*aspect_id, value.clone_box())
             }
             UpdateOp::Modify(aspect_id, f) => {
-                let state_cloned = state.clone();
-                if let Some(v) = state_cloned.get(*aspect_id) {
-                    state_cloned.set(*aspect_id, f(v.clone_box()))
-                } else {
-                    state_cloned
+                if let Some(v) = state.get(*aspect_id) {
+                    state.set(*aspect_id, f(v.clone_box()))
                 }
             }
             UpdateOp::Compose(updates) => {
-                updates
-                    .iter()
-                    .fold(state, |acc, update| update.apply(acc))
+                for update in updates {
+                    update.apply(state);
+                }
             }
             UpdateOp::Conditional {
                 predicate,
                 then_update,
                 else_update,
             } => {
-                if predicate(&state) {
-                    then_update.apply(state)
+                if predicate(state) {
+                    then_update.apply(state);
                 } else if let Some(else_update) = else_update {
-                    else_update.apply(state)
-                } else {
-                    state
+                    else_update.apply(state);
                 }
             }
         }
@@ -490,8 +485,9 @@ mod tests {
     fn test_blueprint_noop() {
         let blueprint = UpdateBlueprint::noop();
         let runtime = Update::from_blueprint(blueprint);
-        let state = StateBuilder::new().build();
-        assert_eq!(runtime.apply(state.clone()), state);
+        let mut state = StateBuilder::new().build();
+        runtime.apply(&mut state);
+        assert_eq!(state, StateBuilder::new().build());
     }
 
     #[test]
@@ -499,9 +495,9 @@ mod tests {
         let id = AspectId(0);
         let blueprint = UpdateBlueprint::set_bool(id, true);
         let runtime = Update::from_blueprint(blueprint);
-        let state = StateBuilder::new().build();
-        let new_state = runtime.apply(state);
-        assert_eq!(new_state.get_as::<bool>(id), Some(&true));
+        let mut state = StateBuilder::new().build();
+        runtime.apply(&mut state);
+        assert_eq!(state.get_as::<bool>(id), Some(&true));
     }
 
     #[test]
@@ -509,9 +505,9 @@ mod tests {
         let id = AspectId(0);
         let blueprint = UpdateBlueprint::increment(id);
         let runtime = Update::from_blueprint(blueprint);
-        let state = StateBuilder::new().set_int(id, 5).build();
-        let new_state = runtime.apply(state);
-        assert_eq!(new_state.get_as::<i64>(id), Some(&6));
+        let mut state = StateBuilder::new().set_int(id, 5).build();
+        runtime.apply(&mut state);
+        assert_eq!(state.get_as::<i64>(id), Some(&6));
     }
 
     #[test]
@@ -525,15 +521,15 @@ mod tests {
         ]);
 
         let runtime = Update::from_blueprint(blueprint);
-        let state = StateBuilder::new()
+        let mut state = StateBuilder::new()
             .set_bool(id1, false)
             .set_int(id2, 5)
             .build();
 
-        let new_state = runtime.apply(state);
+        runtime.apply(&mut state);
 
-        assert_eq!(new_state.get_as::<bool>(id1), Some(&true));
-        assert_eq!(new_state.get_as::<i64>(id2), Some(&6));
+        assert_eq!(state.get_as::<bool>(id1), Some(&true));
+        assert_eq!(state.get_as::<i64>(id2), Some(&6));
     }
 
     #[test]
@@ -544,62 +540,63 @@ mod tests {
         let blueprint = UpdateBlueprint::conditional(predicate, UpdateBlueprint::increment(int_id));
 
         let runtime = Update::from_blueprint(blueprint);
-        let state = StateBuilder::new()
+        let mut state = StateBuilder::new()
             .set_bool(bool_id, true)
             .set_int(int_id, 5)
             .build();
 
-        let new_state = runtime.apply(state);
+        runtime.apply(&mut state);
 
-        assert_eq!(new_state.get_as::<i64>(int_id), Some(&6));
+        assert_eq!(state.get_as::<i64>(int_id), Some(&6));
     }
 
     #[test]
     fn test_runtime_noop() {
         let id = AspectId(0);
-        let state = StateBuilder::new()
+        let mut state = StateBuilder::new()
             .set_bool(id, true)
             .build();
 
-        let new_state = Update::noop().apply(state.clone());
+        let state_clone = state.clone();
+        Update::noop().apply(&mut state);
 
-        assert_eq!(new_state, state.clone());
+        assert_eq!(state, state_clone);
     }
 
     #[test]
     fn test_runtime_set() {
         let id = AspectId(0);
-        let state = StateBuilder::new()
+        let mut state = StateBuilder::new()
             .set_bool(id, true)
             .build();
 
-        let new_state = Update::set_bool(id, false).apply(state);
+        Update::set_bool(id, false).apply(&mut state);
 
-        assert_eq!(new_state.get_as::<bool>(id), Some(&false));
+        assert_eq!(state.get_as::<bool>(id), Some(&false));
     }
 
     #[test]
     fn test_runtime_increment() {
         let id = AspectId(0);
-        let state = StateBuilder::new()
+        let mut state = StateBuilder::new()
             .set_int(id, 5)
             .build();
 
-        let new_state = Update::increment(id).apply(state);
+        Update::increment(id).apply(&mut state);
 
-        assert_eq!(new_state.get_as::<i64>(id), Some(&6));
+        assert_eq!(state.get_as::<i64>(id), Some(&6));
     }
 
     #[test]
     fn test_runtime_toggle() {
         let id = AspectId(0);
-        let state = StateBuilder::new()
+        let mut state = StateBuilder::new()
             .set_bool(id, true)
             .build();
 
-        let new_state = Update::toggle(id).apply(state);
+        Update::toggle(id).apply(&mut state);
 
-        assert_eq!(new_state.get_as::<bool>(id), Some(&false));
+        assert_eq!(state.get_as::<bool>(id), Some(&false));
     }
 
     #[test]
@@ -607,25 +604,25 @@ mod tests {
         let id1 = AspectId(0);
         let id2 = AspectId(1);
 
-        let state = StateBuilder::new()
+        let mut state = StateBuilder::new()
             .set_bool(id1, false)
             .set_int(id2, 5)
             .build();
 
-        let new_state = Update::compose(vec![
+        Update::compose(vec![
             Update::toggle(id1),
             Update::increment(id2),
         ])
-        .apply(state);
+        .apply(&mut state);
 
-        assert_eq!(new_state.get_as::<bool>(id1), Some(&true));
-        assert_eq!(new_state.get_as::<i64>(id2), Some(&6));
+        assert_eq!(state.get_as::<bool>(id1), Some(&true));
+        assert_eq!(state.get_as::<i64>(id2), Some(&6));
     }
 
     #[test]
     fn test_runtime_conditional() {
         let id = AspectId(0);
-        let state = StateBuilder::new()
+        let mut state = StateBuilder::new()
             .set_int(id, 5)
             .build();
 
@@ -634,21 +631,21 @@ mod tests {
             Update::increment(id),
         );
 
-        let new_state = update.apply(state);
+        update.apply(&mut state);
 
-        assert_eq!(new_state.get_as::<i64>(id), Some(&6));
+        assert_eq!(state.get_as::<i64>(id), Some(&6));
     }
 
     #[test]
     fn test_runtime_typed() {
         let id = AspectId(0);
-        let state = StateBuilder::new()
+        let mut state = StateBuilder::new()
             .set_typed(id, 42i32)
             .build();
 
         let update = Update::modify_typed(id, |v: i32| v + 10);
-        let new_state = update.apply(state);
+        update.apply(&mut state);
 
-        assert_eq!(new_state.get_as::<i32>(id), Some(&52));
+        assert_eq!(state.get_as::<i32>(id), Some(&52));
     }
 }

@@ -82,7 +82,7 @@ pub struct StateMachineBlueprint {
 
 ## Review 意见
 
-1. **类型擦除限制**：`AspectDescriptor::clone` 和 `create_initial_state` 中的类型匹配链只支持有限类型（`bool`、`i64`、`f64`、`String`、`i32`、`usize`、`u32`、`u64`、`char` 及其 Vec 变体）。对于不支持的类型，`clone` 返回 `()`，`create_initial_state` 跳过该状态面。这可能导致静默失败，建议考虑使用更通用的方法或错误处理。
+1. ~~**类型擦除限制**：`AspectDescriptor::clone` 和 `create_initial_state` 中的类型匹配链只支持有限类型（`bool`、`i64`、`f64`、`String`、`i32`、`usize`、`u32`、`u64`、`char` 及其 Vec 变体）。对于不支持的类型，`clone` 返回 `()`，`create_initial_state` 跳过该状态面。这可能导致静默失败，建议考虑使用更通用的方法或错误处理。~~ **✅ 已解决**：现在使用 `ClonableAny::clone_box()` 方法，支持所有实现了 `ClonableAny` trait 的类型（包括用户自定义类型）。
 
 2. **验证缺失**：`StateMachineBlueprint` 没有验证逻辑，例如：
    - 检查 AspectId 是否唯一

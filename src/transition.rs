@@ -139,9 +139,9 @@ impl Transition {
         self.active_in.evaluate(state)
     }
 
-    /// Apply the update to the state, returning a new state
-    pub fn apply(&self, state: State) -> State {
-        self.update.apply(state)
+    /// Apply the update to the state
+    pub fn apply(&self, state: &mut State) {
+        self.update.apply(state);
     }
 
     /// Execute the on_tran handler if present
@@ -339,13 +339,13 @@ use crate::state::StateBuilder;
 
         let transition = Transition::new(transition_id, "test_transition", active_in, event, update);
 
-        let state = StateBuilder::new()
+        let mut state = StateBuilder::new()
             .set_bool(mode_id, true)
             .build();
 
-        let new_state = transition.apply(state);
+        transition.apply(&mut state);
 
-        assert_eq!(new_state.get_as::<bool>(mode_id), Some(&false));
+        assert_eq!(state.get_as::<bool>(mode_id), Some(&false));
     }
 
     #[test]

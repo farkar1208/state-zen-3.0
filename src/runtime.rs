@@ -49,12 +49,12 @@ impl StateMachineRuntime {
     /// Dispatch an event to the state machine
     ///
     /// Returns true if a transition was triggered, false otherwise
-    /// 
+    ///
     /// # Panics
     /// Panics if a state update results in a value outside the defined range constraints.
     pub fn dispatch(&mut self, event: &EventId) -> bool {
         let mut triggered = false;
-        
+
         // Find and apply matching transitions
         for transition in self.blueprint.transitions() {
             if transition.event == *event && transition.is_active(&self.state) {
@@ -62,20 +62,18 @@ impl StateMachineRuntime {
                 transition.trigger();
 
                 // Apply state update
-                let new_state = transition.apply(self.state.clone());
+                transition.apply(&mut self.state);
 
-                self.state = new_state;
-                
                 triggered = true;
                 break; // Only trigger first matching transition
             }
         }
-        
+
         // Update zone activations after state change
         if triggered {
             self.update_zone_activations();
         }
-        
+
         triggered
     }
     

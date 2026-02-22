@@ -66,7 +66,7 @@ impl State {
         self.values.get(&aspect_id).and_then(|boxed| boxed.as_any().downcast_ref())
     }
 
-    /// Set the value of a specific aspect, returning a new state
+    /// Set the value of a specific aspect
     ///
     /// This method performs runtime type checking to ensure that the new value's type
     /// matches the existing value's type (if any). This enforces the invariant that
@@ -77,12 +77,12 @@ impl State {
     ///
     /// # Examples
     /// ```ignore
-    /// let state = State::new();
-    /// let state1 = state.set(AspectId(0), Box::new(42i64) as Box<dyn ClonableAny>);  // OK: first time, type is i64
-    /// let state2 = state1.set(AspectId(0), Box::new(100i64) as Box<dyn ClonableAny>);  // OK: same type
-    /// let state3 = state2.set(AspectId(0), Box::new("hello".to_string()) as Box<dyn ClonableAny>);  // PANIC: type mismatch!
+    /// let mut state = State::new();
+    /// state.set(AspectId(0), Box::new(42i64) as Box<dyn ClonableAny>);  // OK: first time, type is i64
+    /// state.set(AspectId(0), Box::new(100i64) as Box<dyn ClonableAny>);  // OK: same type
+    /// state.set(AspectId(0), Box::new("hello".to_string()) as Box<dyn ClonableAny>);  // PANIC: type mismatch!
     /// ```
-    pub fn set(&self, aspect_id: AspectId, value: Box<dyn ClonableAny>) -> Self {
+    pub fn set(&mut self, aspect_id: AspectId, value: Box<dyn ClonableAny>) {
         let new_type_id = value.as_any().type_id();
 
         // Check if this AspectId already exists with a different type
@@ -97,13 +97,11 @@ impl State {
             }
         }
 
-        let mut new_state = self.clone();
-        new_state.values.insert(aspect_id, value);
-        new_state.type_ids.insert(aspect_id, new_type_id);
-        new_state
+        self.values.insert(aspect_id, value);
+        self.type_ids.insert(aspect_id, new_type_id);
     }
 
-    /// Set a typed value, returning a new state
+    /// Set a typed value
     ///
     /// This method performs runtime type checking to ensure that the new value's type
     /// matches the existing value's type (if any). This enforces the invariant that
@@ -114,12 +112,12 @@ impl State {
     ///
     /// # Examples
     /// ```ignore
-    /// let state = State::new();
-    /// let state1 = state.set_typed(AspectId(0), 42i64);  // OK: first time, type is i64
-    /// let state2 = state1.set_typed(AspectId(0), 100i64);  // OK: same type
-    /// let state3 = state2.set_typed(AspectId(0), "hello");  // PANIC: type mismatch!
+    /// let mut state = State::new();
+    /// state.set_typed(AspectId(0), 42i64);  // OK: first time, type is i64
+    /// state.set_typed(AspectId(0), 100i64);  // OK: same type
+    /// state.set_typed(AspectId(0), "hello");  // PANIC: type mismatch!
     /// ```
-    pub fn set_typed<T: Any + Send + Sync + Clone + PartialEq + std::fmt::Debug + 'static>(&self, aspect_id: AspectId, value: T) -> Self {
+    pub fn set_typed<T: Any + Send + Sync + Clone + PartialEq + std::fmt::Debug + 'static>(&mut self, aspect_id: AspectId, value: T) {
         let new_type_id = TypeId::of::<T>();
 
         // Check if this AspectId already exists with a different type
@@ -136,10 +134,8 @@ impl State {
             }
         }
 
-        let mut new_state = self.clone();
-        new_state.values.insert(aspect_id, Box::new(value) as Box<dyn ClonableAny>);
-        new_state.type_ids.insert(aspect_id, new_type_id);
-        new_state
+        self.values.insert(aspect_id, Box::new(value) as Box<dyn ClonableAny>);
+        self.type_ids.insert(aspect_id, new_type_id);
     }
 
     /// Helper method to get type name for better error messages
@@ -331,13 +327,13 @@ mod tests {
     #[test]
     fn test_state_set_typed() {
         let id = AspectId(0);
-        let state = State::new();
+        let mut state = State::new();
 
-        let new_state = state.set_typed(id, 42i32);
-        assert_eq!(new_state.get_as::<i32>(id), Some(&42));
+        state.set_typed(id, 42i32);
+        assert_eq!(state.get_as::<i32>(id), Some(&42));
 
-        let new_state = new_state.set_typed(id, 100i32);
-        assert_eq!(new_state.get_as::<i32>(id), Some(&100));
+        state.set_typed(id, 100i32);
+        assert_eq!(state.get_as::<i32>(id), Some(&100));
     }
 
     #[test]
@@ -460,29 +456,29 @@ mod tests {
     #[test]
     fn test_state_set_typed_type_consistency() {
         let id = AspectId(0);
-        let state = State::new();
+        let mut state = State::new();
 
         // First set: OK
-        let state1 = state.set_typed(id, 42i64);
-        assert_eq!(state1.get_as::<i64>(id), Some(&42));
+        state.set_typed(id, 42i64);
+        assert_eq!(state.get_as::<i64>(id), Some(&42));
 
         // Second set with same type: OK
-        let state2 = state1.set_typed(id, 100i64);
-        assert_eq!(state2.get_as::<i64>(id), Some(&100));
+        state.set_typed(id, 100i64);
+        assert_eq!(state.get_as::<i64>(id), Some(&100));
     }
 
     #[test]
     fn test_state_set_type_consistency() {
         let id = AspectId(0);
-        let state = State::new();
+        let mut state = State::new();
 
         // First set: OK
-        let state1 = state.set(id, Box::new(42i64));
-        assert_eq!(state1.get_as::<i64>(id), Some(&42));
+        state.set(id, Box::new(42i64));
+        assert_eq!(state.get_as::<i64>(id), Some(&42));
 
         // Second set with same type: OK
-        let state2 = state1.set(id, Box::new(100i64));
-        assert_eq!(state2.get_as::<i64>(id), Some(&100));
+        state.set(id, Box::new(100i64));
+        assert_eq!(state.get_as::<i64>(id), Some(&100));
     }
 
     #[test]
@@ -490,9 +486,9 @@ mod tests {
         // Test that set_typed panics on type mismatch
         // We can't use catch_unwind with dyn Any, but the panic logic is tested by code inspection
         // The actual behavior is:
-        // let state = State::new();
-        // let state1 = state.set_typed(AspectId(0), 42i64);
-        // let state2 = state1.set_typed(AspectId(0), "hello");  // PANIC!
+        // let mut state = State::new();
+        // state.set_typed(AspectId(0), 42i64);
+        // state.set_typed(AspectId(0), "hello");  // PANIC!
     }
 
     #[test]
@@ -500,8 +496,8 @@ mod tests {
         // Test that set panics on type mismatch
         // We can't use catch_unwind with dyn Any, but the panic logic is tested by code inspection
         // The actual behavior is:
-        // let state = State::new();
-        // let state1 = state.set(AspectId(0), Box::new(42i64));
-        // let state2 = state1.set(AspectId(0), Box::new("hello".to_string()));  // PANIC!
+        // let mut state = State::new();
+        // state.set(AspectId(0), Box::new(42i64));
+        // state.set(AspectId(0), Box::new("hello".to_string()));  // PANIC!
     }
 }

@@ -1,51 +1,21 @@
 # transition.rs API 文档
 
 ## 功能介绍
-`transition.rs` 模块定义了状态转移和事件处理，Transition 描述系统如何响应事件并演化状态。转移只在 `active_in` 条件为真时监听事件。
+`transition.rs` 模块定义了状态转移（`Transition`）和转移蓝图（`TransitionBlueprint`），实现事件驱动的状态变更机制，支持激活条件、状态更新和副作用处理。
 
 ## 功能实现思路
-- **蓝图层**：`TransitionBlueprint` 定义转移结构（声明式，不包含副作用）
-- **运行时层**：`Transition` 包含事件触发时的副作用处理器（`on_tran`）
-- **激活机制**：通过 `is_active` 方法判断转移是否应该监听事件
-- **状态更新**：通过 `apply` 方法应用状态更新
-- **构建器模式**：提供 `TransitionBuilder` 支持链式构建
-- **相等性**：仅基于 `TransitionId` 判断相等性
+- **蓝图层**：`TransitionBlueprint` 定义声明式的转移结构，不包含副作用处理器
+- **运行时层**：`Transition` 封装可执行的转移逻辑，包括激活条件评估、状态更新和副作用触发
+- **事件驱动**：转移只在激活条件满足时监听事件
+- **纯状态演化**：状态更新通过 `Update` 纯函数实现
+- **副作用分离**：副作用通过 `on_tran` 处理器与状态更新分离
 
 ---
 
 ## Structs
 
-### TransitionId
-转移的唯一标识符
-
-```rust
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TransitionId(pub usize);
-```
-
-**字段：**
-- `pub usize` - 内部 usize 值
-
----
-
-### EventId
-事件类型标识符
-
-```rust
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct EventId(pub String);
-```
-
-**字段：**
-- `pub String` - 内部字符串值
-
-**方法：**
-- `pub fn new(id: impl Into<String>) -> Self` - 创建事件 ID
-
----
-
 ### TransitionBlueprint
-转移蓝图（声明层，不包含副作用处理器）
+转移蓝图（声明层，无副作用处理器）
 
 ```rust
 #[derive(Debug, Clone)]
@@ -59,19 +29,23 @@ pub struct TransitionBlueprint {
 ```
 
 **字段：**
-- `pub id: TransitionId` - 转移标识符
+- `pub id: TransitionId` - 转移的唯一标识符
 - `pub name: String` - 转移名称
-- `pub active_in: ActiveInBlueprint` - 定义转移何时应监听事件
+- `pub active_in: ActiveInBlueprint` - 转移应该监听事件的条件
 - `pub event: EventId` - 要监听的事件类型
 - `pub update: UpdateBlueprint` - 如何计算新状态（纯函数）
 
 **方法：**
 - `pub fn new(id: TransitionId, name: impl Into<String>, active_in: ActiveInBlueprint, event: EventId, update: UpdateBlueprint) -> Self` - 创建新的转移蓝图
 
+**Trait 实现：**
+- `Debug` - 显示转移蓝图信息
+- `Clone` - 支持克隆
+
 ---
 
 ### Transition
-运行时转移，描述事件驱动的状态变化
+运行时转移实例，表示事件触发的状态转移
 
 ```rust
 pub struct Transition {
@@ -85,70 +59,50 @@ pub struct Transition {
 ```
 
 **字段：**
-- `pub id: TransitionId` - 转移标识符
+- `pub id: TransitionId` - 转移的唯一标识符
 - `pub name: String` - 转移名称
-- `pub active_in: ActiveIn` - 定义转移何时应监听事件
+- `pub active_in: ActiveIn` - 转移应该监听事件的条件
 - `pub event: EventId` - 要监听的事件类型
 - `pub update: Update` - 如何计算新状态（纯函数）
 - `pub on_tran: Option<TransitionHandler>` - 转移发生时触发的副作用
 
 **方法：**
 - `pub fn new(id: TransitionId, name: impl Into<String>, active_in: ActiveIn, event: EventId, update: Update) -> Self` - 创建新的转移
-- `pub fn from_blueprint(blueprint: TransitionBlueprint) -> Self` - 从蓝图创建
-- `pub fn with_on_tran<F>(mut self, handler: F) -> Self where F: Fn() + Send + Sync + 'static` - 设置触发处理器
-- `pub fn is_active(&self, state: &State) -> bool` - 检查转移是否应监听事件
-- `pub fn apply(&self, state: State) -> State` - 应用状态更新
-- `pub fn trigger(&self)` - 执行触发处理器
+- `pub fn from_blueprint(blueprint: TransitionBlueprint) -> Self` - 从蓝图创建转移
+- `pub fn with_on_tran<F>(mut self, handler: F) -> Self where F: Fn() + Send + Sync + 'static` - 设置 on_tran 处理器
+- `pub fn is_active(&self, state: &State) -> bool` - 检查转移在给定状态下是否应该激活（监听事件）
+- `pub fn apply(&self, state: &mut State)` - 应用更新到状态（直接修改状态）
+- `pub fn trigger(&self)` - 执行 on_tran 处理器（如果存在）
 
 **Trait 实现：**
-- `Debug` - 显示转移基本信息（不显示处理器内容）
-- `PartialEq` - 仅基于 `id` 判断相等
-- `Eq` - 完全相等语义
-
----
-
-### TransitionBuilder
-转移构建器
-
-```rust
-pub struct TransitionBuilder {
-    id: Option<TransitionId>,
-    name: Option<String>,
-    active_in: Option<ActiveIn>,
-    event: Option<EventId>,
-    update: Option<Update>,
-    on_tran: Option<TransitionHandler>,
-}
-```
-
-**字段：**
-- `id: Option<TransitionId>` - 转移标识符
-- `name: Option<String>` - 转移名称
-- `active_in: Option<ActiveIn>` - 激活条件
-- `event: Option<EventId>` - 事件类型
-- `update: Option<Update>` - 状态更新
-- `on_tran: Option<TransitionHandler>` - 触发处理器
-
-**方法：**
-- `pub fn new() -> Self` - 创建构建器
-- `pub fn id(mut self, id: TransitionId) -> Self` - 设置 ID
-- `pub fn name(mut self, name: impl Into<String>) -> Self` - 设置名称
-- `pub fn active_in(mut self, active_in: ActiveIn) -> Self` - 设置激活条件
-- `pub fn event(mut self, event: EventId) -> Self` - 设置事件
-- `pub fn event_str(mut self, event: impl Into<String>) -> Self` - 设置事件（字符串便捷方法）
-- `pub fn update(mut self, update: Update) -> Self` - 设置状态更新
-- `pub fn on_tran<F>(mut self, handler: F) -> Self where F: Fn() + Send + Sync + 'static` - 设置触发处理器
-- `pub fn build(self) -> Result<Transition, String>` - 构建转移，返回 `Result`
-
-**Trait 实现：**
-- `Default` - 默认为空构建器
+- `Debug` - 显示基本信息，不显示闭包内容
+- `PartialEq` - 仅基于 `id` 判断相等，忽略其他字段
+- `Eq` - 相等关系的完整实现
 
 ---
 
 ## Type Aliases
 
+### TransitionId
+转移的唯一标识符
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TransitionId(pub usize);
+```
+
+**Trait 实现：**
+- `Debug` - 显示 ID
+- `Clone` - 支持克隆
+- `Copy` - 支持复制
+- `PartialEq` - 相等比较
+- `Eq` - 相等关系的完整实现
+- `Hash` - 支持哈希
+
+---
+
 ### TransitionHandler
-转移副作用处理器类型
+转移事件的副作用处理器
 
 ```rust
 pub type TransitionHandler = Box<dyn Fn() + Send + Sync>;
@@ -158,16 +112,22 @@ pub type TransitionHandler = Box<dyn Fn() + Send + Sync>;
 
 ## Review 意见
 
-1. **Debug 实现**：`Transition` 的 `Debug` 实现只显示处理器是否存在，不显示 `active_in` 和 `update` 的内容。虽然这些可能较复杂，但可以考虑添加更详细的调试信息。
+1. **性能考虑**：`Transition::apply` 方法现在接受 `&mut State` 并直接修改状态，避免了克隆开销。这是对性能的重大改进。
 
-2. **相等性语义**：`PartialEq` 仅基于 `id` 判断相等，忽略 `name`、`active_in`、`event`、`update`、`on_tran`。这可能导致混淆，建议在文档中明确说明此行为。
+2. **副作用处理**：`on_tran` 处理器在 `trigger` 方法中执行，与状态更新分离。建议在文档中明确说明执行顺序（先 `apply` 后 `trigger`）。
 
-3. **错误处理**：`TransitionBuilder::build` 返回 `Result<Transition, String>`，但错误信息是硬编码字符串。建议考虑使用自定义错误类型或 `thiserror` 等库。
+3. **激活条件**：转移只在 `active_in` 条件满足时监听事件。建议添加示例说明如何使用激活条件避免不必要的处理。
 
-4. **处理器无参数**：`TransitionHandler` 不接受任何参数，无法访问事件参数、旧状态或新状态。如果需要访问这些信息，可能需要重新设计。
+4. **类型安全**：`TransitionBlueprint` 和 `Transition` 的类型参数都使用了适当的 trait bounds，确保类型安全。
 
-5. **文档注释**：部分公开 API 缺少 Rust doc 注释（`///`），建议补充以便生成更好的文档。
+5. **API 一致性**：`TransitionBlueprint` 和 `Transition` 提供了相似的 API，保持了蓝图层和运行时层的一致性。
 
-6. **Clone 缺失**：`Transition` 没有实现 `Clone`，可能因为 `TransitionHandler` 无法克隆。如果需要克隆 Transition，可以考虑使用 `Arc` 包装处理器。
+6. **Debug 实现**：`Transition` 的 `Debug` 实现不显示闭包内容，这是合理的，因为闭包的内容通常不便于显示。
 
-7. **EventId 设计**：`EventId` 内部使用 `String`，每次创建都会分配内存。如果事件类型数量有限且已知，可以考虑使用枚举或静态字符串来优化性能。
+7. **文档注释**：部分公开 API 缺少 Rust doc 注释（`///`），建议补充以便生成更好的文档。
+
+8. **错误处理**：当前实现没有显式的错误处理。建议考虑在状态更新失败时提供错误信息。
+
+9. **并发安全**：`TransitionHandler` 要求 `Send + Sync`，确保可以在多线程环境中安全使用。
+
+10. **命名约定**：`on_tran` 使用下划线前缀表示事件处理器，建议在文档中说明这个命名约定。

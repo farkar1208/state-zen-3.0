@@ -4,7 +4,7 @@
 `state.rs` 模块定义了运行时状态容器（`State`）和状态构建器（`StateBuilder`），实现了高维状态向量管理，支持类型擦除的多类型值存储和运行时类型检查。
 
 ## 功能实现思路
-- **运行时层**：`State` 提供不可变的状态更新，每次 `set` 操作返回新的状态实例（持久化数据结构）
+- **运行时层**：`State` 提供可变的状态更新，`set` 和 `set_typed` 方法直接修改状态，避免克隆开销
 - **类型安全**：通过 `TypeId` 进行运行时类型检查，确保同一 `AspectId` 始终存储相同类型的值
 - **类型擦除**：使用 `HashMap<AspectId, Box<dyn ClonableAny>>` 存储类型擦除的值
 - **构建器模式**：`StateBuilder` 提供链式 API 便捷构建状态
@@ -34,8 +34,8 @@ pub struct State {
 - `pub fn new() -> Self` - 创建空状态
 - `pub fn get(&self, aspect_id: AspectId) -> Option<&(dyn ClonableAny)>` - 获取类型擦除的值
 - `pub fn get_as<T: 'static>(&self, aspect_id: AspectId) -> Option<&T>` - 获取类型化值
-- `pub fn set(&self, aspect_id: AspectId, value: Box<dyn ClonableAny>) -> Self` - 设置值（返回新状态），执行运行时类型检查。如果 `AspectId` 已存在且类型不同则 panic
-- `pub fn set_typed<T: Any + Send + Sync + Clone + PartialEq + std::fmt::Debug + 'static>(&self, aspect_id: AspectId, value: T) -> Self` - 设置类型化值，执行运行时类型检查。如果 `AspectId` 已存在且类型不同则 panic
+- `pub fn set(&mut self, aspect_id: AspectId, value: Box<dyn ClonableAny>)` - 设置值，执行运行时类型检查。如果 `AspectId` 已存在且类型不同则 panic
+- `pub fn set_typed<T: Any + Send + Sync + Clone + PartialEq + std::fmt::Debug + 'static>(&mut self, aspect_id: AspectId, value: T)` - 设置类型化值，执行运行时类型检查。如果 `AspectId` 已存在且类型不同则 panic
 - `pub fn has(&self, aspect_id: AspectId) -> bool` - 检查是否包含某个状态面
 - `pub fn aspect_ids(&self) -> impl Iterator<Item = AspectId> + '_` - 获取所有状态面 ID 的迭代器
 - `pub fn len(&self) -> usize` - 获取状态面数量
@@ -94,9 +94,9 @@ pub struct StateBuilder {
 
 ## Review 意见
 
-1. **错误处理**：当类型不匹配时，`set` 和 `set_typed` 方法使用 `panic!` 处理。对于生产环境，建议使用 `Result` 类型返回错误，让调用者决定如何处理。
+1. **性能考虑**：`State::set` 和 `State::set_typed` 现在使用可变引用，避免了每次更新都需要克隆整个状态的开销。这是对性能的重大改进。
 
-2. **性能考虑**：`State::clone` 会深拷贝所有值，对于大型状态可能有性能影响。建议考虑引用计数（`Arc`）或其他优化策略，如不可变持久化数据结构。
+2. **错误处理**：当类型不匹配时，`set` 和 `set_typed` 方法使用 `panic!` 处理。对于生产环境，建议使用 `Result` 类型返回错误，让调用者决定如何处理。
 
 3. **类型安全**：类型检查在运行时进行，无法在编译时保证类型安全。这是类型擦除的权衡，但建议在文档中明确说明。
 
