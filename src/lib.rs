@@ -5,8 +5,7 @@ pub mod active_in;
 pub mod zone;
 pub mod transition;
 pub mod update;
-pub mod blueprint;
-pub mod runtime;
+pub mod statemachine;
 
 // Export core types
 pub use core::{ClonableAny, AspectId, EventId};
@@ -16,8 +15,8 @@ pub use active_in::{ActiveIn, ActiveInBlueprint, ActiveInFactory, Predicate};
 pub use zone::{Zone, ZoneBlueprint, ZoneId};
 pub use transition::{Transition, TransitionBlueprint, TransitionId};
 pub use update::{Update, UpdateBlueprint};
-pub use blueprint::{StateMachineBlueprint, AspectDescriptor};
-pub use runtime::StateMachineRuntime;
+// Re-export from statemachine module for backward compatibility
+pub use statemachine::{StateMachineBlueprint, AspectDescriptor, StateMachineRuntime};
 
 /// Prelude module for convenient imports
 pub mod prelude {
@@ -28,6 +27,5 @@ pub mod prelude {
     pub use crate::zone::{Zone, ZoneBlueprint, ZoneId};
     pub use crate::transition::{Transition, TransitionBlueprint, TransitionId};
     pub use crate::update::{Update, UpdateBlueprint};
-    pub use crate::blueprint::{StateMachineBlueprint, AspectDescriptor};
-    pub use crate::runtime::StateMachineRuntime;
+    pub use crate::statemachine::{StateMachineBlueprint, AspectDescriptor, StateMachineRuntime};
 }
