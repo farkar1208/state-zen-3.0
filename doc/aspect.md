@@ -1,32 +1,17 @@
 # aspect.rs API 文档
 
 ## 功能介绍
-`aspect.rs` 模块定义了状态面（StateAspect）和状态向量（State）管理，实现了类型擦除的状态容器，支持多种类型的值存储和运行时类型检查。
+`aspect.rs` 模块定义了状态面蓝图（`AspectBlueprint`）和状态面约束蓝图（`AspectBoundsBlueprint`），用于声明式地定义状态面的结构和约束条件。
 
 ## 功能实现思路
-- 使用 `HashMap<AspectId, Box<dyn Any + Send + Sync>>` 存储类型擦除的状态值
-- 通过 `TypeId` 进行运行时类型检查，确保同一 AspectId 始终存储相同类型的值
-- 蓝图层（`AspectBlueprint`、`AspectBoundsBlueprint`）定义声明式结构
-- 运行时层（`State`）提供不可变的状态更新，每次 `set` 操作返回新的状态实例
-- 提供 `StateBuilder` 便捷构建状态
-- 实现 `Clone` 和 `PartialEq` trait 支持状态克隆和比较
+- **蓝图层**：`AspectBlueprint` 和 `AspectBoundsBlueprint` 是声明式定义，不包含验证逻辑或运行时行为
+- **类型擦除**：使用 `Box<dyn ClonableAny>` 存储类型擦除的值和约束
+- **类型一致性验证**：在构建时验证类型一致性，确保默认值和约束的类型匹配
+- **链式 API**：通过 `with_*` 方法提供流畅的构建体验
 
 ---
 
 ## Structs
-
-### AspectId
-状态面的唯一标识符
-
-```rust
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AspectId(pub usize);
-```
-
-**字段：**
-- `pub usize` - 内部 usize 值
-
----
 
 ### AspectBoundsBlueprint
 类型擦除的状态面约束定义（蓝图层），用于定义数值范围等约束
@@ -64,7 +49,7 @@ pub struct AspectBoundsBlueprint {
 pub struct AspectBlueprint {
     pub id: AspectId,
     pub name: String,
-    pub default_value: Box<dyn Any + Send + Sync>,
+    pub default_value: Box<dyn ClonableAny>,
     pub default_type_id: TypeId,
     pub default_type_name: String,
     pub bounds: Option<AspectBoundsBlueprint>,
@@ -74,100 +59,28 @@ pub struct AspectBlueprint {
 **字段：**
 - `pub id: AspectId` - 状态面标识符
 - `pub name: String` - 状态面名称
-- `pub default_value: Box<dyn Any + Send + Sync>` - 默认值（类型擦除）
+- `pub default_value: Box<dyn ClonableAny>` - 默认值（类型擦除）
 - `pub default_type_id: TypeId` - 默认值的 TypeId
 - `pub default_type_name: String` - 默认值的类型名称
 - `pub bounds: Option<AspectBoundsBlueprint>` - 约束条件（可选）
 
 **方法：**
-- `pub fn new<T: Any + Send + Sync + 'static>(id: AspectId, name: impl Into<String>, default_value: T) -> Self` - 创建新的状态面蓝图
+- `pub fn new<T: Any + Send + Sync + Clone + PartialEq + std::fmt::Debug + 'static>(id: AspectId, name: impl Into<String>, default_value: T) -> Self` - 创建新的状态面蓝图
 - `pub fn with_bounds(mut self, bounds: AspectBoundsBlueprint) -> Self` - 设置约束（类型必须匹配）
-- `pub fn with_range<T: 'static + Send + Sync>(mut self, min: T, max: T) -> Self` - 设置范围约束（便捷方法）
-- `pub fn with_min<T: 'static + Send + Sync>(mut self, min: T) -> Self` - 设置最小值约束
-- `pub fn with_max<T: 'static + Send + Sync>(mut self, max: T) -> Self` - 设置最大值约束
+- `pub fn with_range<T: 'static + Send + Sync + Clone + PartialEq + std::fmt::Debug>(mut self, min: T, max: T) -> Self` - 设置范围约束（便捷方法）
+- `pub fn with_min<T: 'static + Send + Sync + Clone + PartialEq + std::fmt::Debug>(mut self, min: T) -> Self` - 设置最小值约束
+- `pub fn with_max<T: 'static + Send + Sync + Clone + PartialEq + std::fmt::Debug>(mut self, max: T) -> Self` - 设置最大值约束
 - `pub fn is_type<T: 'static>(&self) -> bool` - 检查是否为特定类型
 - `pub fn get_default_as<T: 'static>(&self) -> Option<&T>` - 安全获取默认值的特定类型引用
 
----
-
-### State
-运行时状态容器（高维状态向量）
-
-```rust
-#[derive(Debug, Default)]
-pub struct State {
-    values: HashMap<AspectId, Box<dyn Any + Send + Sync>>,
-    type_ids: HashMap<AspectId, TypeId>,
-}
-```
-
-**字段：**
-- `values: HashMap<AspectId, Box<dyn Any + Send + Sync>>` - 状态面 ID 到类型擦除值的映射
-- `type_ids: HashMap<AspectId, TypeId>` - 状态面 ID 到 TypeId 的映射（运行时类型检查）
-
-**方法：**
-- `pub fn new() -> Self` - 创建空状态
-- `pub fn get(&self, aspect_id: AspectId) -> Option<&(dyn Any + Send + Sync)>` - 获取类型擦除的值
-- `pub fn get_as<T: 'static>(&self, aspect_id: AspectId) -> Option<&T>` - 获取类型化值
-- `pub fn set(&self, aspect_id: AspectId, value: Box<dyn Any + Send + Sync>) -> Self` - 设置值（返回新状态）
-- `pub fn set_typed<T: Any + Send + Sync + 'static>(&self, aspect_id: AspectId, value: T) -> Self` - 设置类型化值
-- `pub fn has(&self, aspect_id: AspectId) -> bool` - 检查是否包含某个状态面
-- `pub fn aspect_ids(&self) -> impl Iterator<Item = AspectId> + '_` - 获取所有状态面 ID
-- `pub fn len(&self) -> usize` - 获取状态面数量
-- `pub fn is_empty(&self) -> bool` - 检查是否为空
-- `pub fn get_type_id(&self, aspect_id: AspectId) -> Option<TypeId>` - 获取值的 TypeId
-- `pub fn get_as_checked<T: 'static>(&self, aspect_id: AspectId, expected_type_id: TypeId) -> Option<&T>` - 带类型检查的获取
+**Trait 实现：**
+- `Clone` - 深拷贝所有字段，包括类型擦除的值
 
 ---
 
-### StateBuilder
-状态构建器，提供链式 API 构建状态
+## Type Aliases
 
-```rust
-pub struct StateBuilder {
-    values: HashMap<AspectId, Box<dyn Any + Send + Sync>>,
-    type_ids: HashMap<AspectId, TypeId>,
-}
-```
-
-**字段：**
-- `values: HashMap<AspectId, Box<dyn Any + Send + Sync>>` - 状态面 ID 到类型擦除值的映射
-- `type_ids: HashMap<AspectId, TypeId>` - 状态面 ID 到 TypeId 的映射
-
-**方法：**
-- `pub fn new() -> Self` - 创建构建器
-- `pub fn set(mut self, aspect_id: AspectId, value: Box<dyn Any + Send + Sync>) -> Self` - 设置类型擦除值
-- `pub fn set_typed<T: Any + Send + Sync + 'static>(mut self, aspect_id: AspectId, value: T) -> Self` - 设置类型化值
-- `pub fn set_bool(self, aspect_id: AspectId, value: bool) -> Self` - 设置布尔值（便捷方法）
-- `pub fn set_int(self, aspect_id: AspectId, value: i64) -> Self` - 设置整数（便捷方法）
-- `pub fn set_float(self, aspect_id: AspectId, value: f64) -> Self` - 设置浮点数（便捷方法）
-- `pub fn set_string(self, aspect_id: AspectId, value: impl Into<String>) -> Self` - 设置字符串（便捷方法）
-- `pub fn build(self) -> State` - 构建状态
-
----
-
-## Traits
-
-### `pub trait ClonableAny: Any + Send + Sync`
-类型擦除的值支持克隆和相等比较的 trait。
-
-**方法：**
-- `fn clone_box(&self) -> Box<dyn ClonableAny>` - 克隆此类型擦除的值
-- `fn eq_box(&self, other: &dyn ClonableAny) -> bool` - 与另一个类型擦除的值比较相等性
-
-**自动实现：** 所有满足 `Any + Send + Sync + Clone + PartialEq + 'static` 的类型自动实现此 trait。
-
-**使用示例：**
-```rust
-// 基础类型自动实现
-let bool_val: Box<dyn ClonableAny> = Box::new(true);
-let cloned = bool_val.clone_box();  // 克隆
-
-// 自定义类型只需 derive Clone 和 PartialEq
-#[derive(Clone, PartialEq)]
-struct MyStruct { x: i32 }
-let custom_val: Box<dyn ClonableAny> = Box::new(MyStruct { x: 100 });
-```
+（无公开类型别名）
 
 ---
 
@@ -179,14 +92,14 @@ let custom_val: Box<dyn ClonableAny> = Box::new(MyStruct { x: 100 });
 
 ## Review 意见
 
-1. **类型擦除限制**：`clone_any` 和 `eq_any` 只支持有限的常见类型，对于自定义类型会返回后备值（`()` 或 `false`）。建议考虑使用 trait 约束要求类型实现 `Clone` 和 `PartialEq`，或者提供更完善的错误处理机制。
+1. **错误处理**：当类型不匹配时，`with_*` 方法使用 `panic!` 处理。对于生产环境，建议使用 `Result` 类型返回错误，让调用者决定如何处理。
 
-2. **错误处理**：当类型不匹配时，代码使用 `panic!` 处理。对于生产环境，建议使用 `Result` 类型返回错误，让调用者决定如何处理。
+2. **类型验证时机**：类型一致性验证在构建时进行，但运行时使用时可能仍需检查。建议考虑提供验证方法。
 
-3. **get_type_id_of_any**：此函数内部实现了一个类型匹配链，对于新增类型需要修改代码。建议考虑使用更通用的方法或宏来减少维护成本。
+3. **文档注释**：部分公开 API 缺少 Rust doc 注释（`///`），建议补充以便生成更好的文档。
 
-4. **文档注释**：部分公开 API 缺少 Rust doc 注释（`///`），建议补充以便生成更好的文档。
+4. **约束验证**：`AspectBoundsBlueprint` 定义了约束但没有验证逻辑。建议考虑在运行时层添加验证机制。
 
-5. **性能考虑**：`State::clone` 会深拷贝所有值，对于大型状态可能有性能影响。建议考虑引用计数（`Arc`）或其他优化策略。
+5. **类型擦除开销**：使用 `Box<dyn ClonableAny>` 有 vtable 开销。对于大量小型值，建议考虑使用枚举或其他零成本抽象。
 
-6. **类型安全**：`set` 和 `set_typed` 方法在运行时进行类型检查，无法在编译时保证类型安全。这是类型擦除的权衡，但建议在文档中明确说明。
+6. **API 一致性**：`with_min`、`with_max` 和 `with_range` 的类型约束完全相同，建议考虑统一类型参数或提供更灵活的 API。
