@@ -1,7 +1,7 @@
-use state_zen::{AspectId, AspectBlueprint, Zone, ZoneId, Transition, TransitionId, StateMachineRuntime};
+use state_zen::{AspectId, AspectBlueprint, ZoneBlueprint, ZoneId, TransitionBlueprint, TransitionId, StateMachineRuntime};
 use state_zen::core::EventId;
-use state_zen::active_in::ActiveInFactory;
-use state_zen::update::Update;
+use state_zen::active_in::ActiveInBlueprint;
+use state_zen::update::{Update, UpdateBlueprint};
 use state_zen::StateMachineBlueprint;
 
 fn main() {
@@ -26,95 +26,117 @@ fn main() {
     );
 
     // Create a zone that activates when charging
-    let charging_zone = Zone::new(
+    let charging_zone_blueprint = ZoneBlueprint::new(
         ZoneId(0),
         "charging_zone",
-        ActiveInFactory::aspect_bool(AspectId(2), true),
-    )
-    .with_on_enter(|| {
-        println!("🔋 Started charging - entering charging zone");
-    })
-    .with_on_exit(|| {
-        println!("🔋 Stopped charging - exiting charging zone");
-    });
+        ActiveInBlueprint::aspect_bool(AspectId(2), true),
+    );
 
     // Create a low battery zone
-    let low_battery_zone = Zone::new(
+    let low_battery_zone_blueprint = ZoneBlueprint::new(
         ZoneId(1),
         "low_battery_zone",
-        ActiveInFactory::aspect_lt(AspectId(1), 20i64),
-    )
-    .with_on_enter(|| {
-        println!("⚠️  Low battery warning!");
-    })
-    .with_on_exit(|| {
-        println!("✓ Battery level normal");
-    });
+        ActiveInBlueprint::aspect_lt(AspectId(1), 20i64),
+    );
 
     // Create a running zone
-    let running_zone = Zone::new(
+    let running_zone_blueprint = ZoneBlueprint::new(
         ZoneId(2),
         "running_zone",
-        ActiveInFactory::aspect_string_eq(AspectId(0), "running"),
-    )
-    .with_on_enter(|| {
-        println!("▶️  System started");
-    })
-    .with_on_exit(|| {
-        println!("⏸️  System stopped");
-    });
+        ActiveInBlueprint::aspect_string_eq(AspectId(0), "running"),
+    );
 
     // Create transitions
-    let start_transition = Transition::new(
+    let start_transition_blueprint = TransitionBlueprint::new(
         TransitionId(0),
         "start",
-        ActiveInFactory::aspect_string_eq(AspectId(0), "idle"),
+        ActiveInBlueprint::aspect_string_eq(AspectId(0), "idle"),
         EventId::new("start_button"),
-        Update::set_string(AspectId(0), "running"),
-    )
-    .with_on_tran(|| {
-        println!("🎯 Start button pressed - transitioning to running");
-    });
+        UpdateBlueprint::set_string(AspectId(0), "running"),
+    );
 
-    let stop_transition = Transition::new(
+    let stop_transition_blueprint = TransitionBlueprint::new(
         TransitionId(1),
         "stop",
-        ActiveInFactory::aspect_string_eq(AspectId(0), "running"),
+        ActiveInBlueprint::aspect_string_eq(AspectId(0), "running"),
         EventId::new("stop_button"),
-        Update::set_string(AspectId(0), "idle"),
-    )
-    .with_on_tran(|| {
-        println!("⏹️  Stop button pressed - transitioning to idle");
-    });
+        UpdateBlueprint::set_string(AspectId(0), "idle"),
+    );
 
-    let charge_transition = Transition::new(
+    let charge_transition_blueprint = TransitionBlueprint::new(
         TransitionId(2),
         "charge",
-        ActiveInFactory::always(),
+        ActiveInBlueprint::always(),
         EventId::new("charge"),
-        Update::set_bool(AspectId(2), true),
-    )
-    .with_on_tran(|| {
-        println!("🔌 Charger connected");
-    });
+        UpdateBlueprint::set_bool(AspectId(2), true),
+    );
 
-    let uncharge_transition = Transition::new(
+    let uncharge_transition_blueprint = TransitionBlueprint::new(
         TransitionId(3),
         "uncharge",
-        ActiveInFactory::always(),
+        ActiveInBlueprint::always(),
         EventId::new("uncharge"),
-        Update::set_bool(AspectId(2), false),
-    )
-    .with_on_tran(|| {
-        println!("🔌 Charger disconnected");
-    });
+        UpdateBlueprint::set_bool(AspectId(2), false),
+    );
 
-    let consume_battery_transition = Transition::new(
+    let consume_battery_transition_blueprint = TransitionBlueprint::new(
         TransitionId(4),
         "consume_battery",
-        ActiveInFactory::aspect_string_eq(AspectId(0), "running"),
+        ActiveInBlueprint::aspect_string_eq(AspectId(0), "running"),
         EventId::new("tick"),
-        Update::compose(vec![
+        UpdateBlueprint::noop(), // Will be replaced with custom update in runtime
+    );
+
+    // Build the state machine blueprint
+    let mut blueprint = StateMachineBlueprint::new("device_controller");
+    blueprint.add_aspect(mode_aspect);
+    blueprint.add_aspect(battery_aspect);
+    blueprint.add_aspect(is_charging_aspect);
+    blueprint.add_zone(charging_zone_blueprint);
+    blueprint.add_zone(low_battery_zone_blueprint);
+    blueprint.add_zone(running_zone_blueprint);
+    blueprint.add_transition(start_transition_blueprint);
+    blueprint.add_transition(stop_transition_blueprint);
+    blueprint.add_transition(charge_transition_blueprint);
+    blueprint.add_transition(uncharge_transition_blueprint);
+    blueprint.add_transition(consume_battery_transition_blueprint);
+
+    // Create runtime state machine instance
+    let mut runtime = StateMachineRuntime::new(blueprint)
+        // Add zone handlers
+        .with_zone_on_enter(ZoneId(0), || {
+            println!("🔋 Started charging - entering charging zone");
+        })
+        .with_zone_on_exit(ZoneId(0), || {
+            println!("🔋 Stopped charging - exiting charging zone");
+        })
+        .with_zone_on_enter(ZoneId(1), || {
+            println!("⚠️  Low battery warning!");
+        })
+        .with_zone_on_exit(ZoneId(1), || {
+            println!("✓ Battery level normal");
+        })
+        .with_zone_on_enter(ZoneId(2), || {
+            println!("▶️  System started");
+        })
+        .with_zone_on_exit(ZoneId(2), || {
+            println!("⏸️  System stopped");
+        })
+        // Add transition handlers
+        .with_transition_on_tran(TransitionId(0), || {
+            println!("🎯 Start button pressed - transitioning to running");
+        })
+        .with_transition_on_tran(TransitionId(1), || {
+            println!("⏹️  Stop button pressed - transitioning to idle");
+        })
+        .with_transition_on_tran(TransitionId(2), || {
+            println!("🔌 Charger connected");
+        })
+        .with_transition_on_tran(TransitionId(3), || {
+            println!("🔌 Charger disconnected");
+        })
+        // Custom update for consume_battery transition
+        .with_transition_update(TransitionId(4), Update::compose(vec![
             Update::conditional_else(
                 // Charging and battery < 100: increase, otherwise decrease
                 |s| s.get_as::<bool>(AspectId(2)).map_or(false, |&v| v)
@@ -129,25 +151,7 @@ fn main() {
                     Update::set_int(AspectId(1), 0),
                 ]),
             ),
-        ]),
-    );
-
-    // Build the state machine blueprint
-    let mut blueprint = StateMachineBlueprint::new("device_controller");
-    blueprint.add_aspect(mode_aspect);
-    blueprint.add_aspect(battery_aspect);
-    blueprint.add_aspect(is_charging_aspect);
-    blueprint.add_zone(charging_zone);
-    blueprint.add_zone(low_battery_zone);
-    blueprint.add_zone(running_zone);
-    blueprint.add_transition(start_transition);
-    blueprint.add_transition(stop_transition);
-    blueprint.add_transition(charge_transition);
-    blueprint.add_transition(uncharge_transition);
-    blueprint.add_transition(consume_battery_transition);
-
-    // Create runtime state machine instance
-    let mut runtime = StateMachineRuntime::new(blueprint);
+        ]));
 
     println!("\n📍 Initial State:");
     print_state(&runtime);

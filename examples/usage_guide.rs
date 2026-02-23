@@ -2,10 +2,10 @@
 ///
 /// 本示例展示如何使用 state-zen 创建和运行状态机
 
-use state_zen::{AspectId, AspectBlueprint, Zone, ZoneId, Transition, TransitionId, StateMachineRuntime, StateMachineBlueprint};
+use state_zen::{AspectId, AspectBlueprint, ZoneBlueprint, ZoneId, TransitionBlueprint, TransitionId, StateMachineRuntime, StateMachineBlueprint};
 use state_zen::core::EventId;
-use state_zen::active_in::ActiveInFactory;
-use state_zen::update::Update;
+use state_zen::active_in::ActiveInBlueprint;
+use state_zen::update::{Update, UpdateBlueprint};
 
 fn main() {
     println!("=== state-zen 使用指南 ===\n");
@@ -43,43 +43,25 @@ fn main() {
     println!("2️⃣ 定义区域");
 
     // 低电量警告区域
-    let low_battery_zone = Zone::new(
+    let low_battery_zone = ZoneBlueprint::new(
         ZoneId(0),
         "low_battery",
-        ActiveInFactory::aspect_lt(AspectId(1), 20i64)
-    )
-    .with_on_enter(|| {
-        println!("   ⚠️ 警告：电量低于 20%！");
-    })
-    .with_on_exit(|| {
-        println!("   ✓ 电量恢复正常");
-    });
+        ActiveInBlueprint::aspect_lt(AspectId(1), 20i64)
+    );
 
     // 充电区域
-    let charging_zone = Zone::new(
+    let charging_zone = ZoneBlueprint::new(
         ZoneId(1),
         "charging",
-        ActiveInFactory::aspect_bool(AspectId(2), true)
-    )
-    .with_on_enter(|| {
-        println!("   🔌 开始充电");
-    })
-    .with_on_exit(|| {
-        println!("   🔌 停止充电");
-    });
+        ActiveInBlueprint::aspect_bool(AspectId(2), true)
+    );
 
     // 运行区域
-    let running_zone = Zone::new(
+    let running_zone = ZoneBlueprint::new(
         ZoneId(2),
         "running",
-        ActiveInFactory::aspect_string_eq(AspectId(0), "running")
-    )
-    .with_on_enter(|| {
-        println!("   ▶️ 设备启动");
-    })
-    .with_on_exit(|| {
-        println!("   ⏸️ 设备停止");
-    });
+        ActiveInBlueprint::aspect_string_eq(AspectId(0), "running")
+    );
 
     println!("   ✓ 定义了 3 个区域: low_battery, charging, running\n");
 
@@ -89,64 +71,48 @@ fn main() {
     println!("3️⃣ 定义转移");
 
     // 启动设备
-    let start_transition = Transition::new(
+    let start_transition = TransitionBlueprint::new(
         TransitionId(0),
         "start",
-        ActiveInFactory::aspect_string_eq(AspectId(0), "idle"),
+        ActiveInBlueprint::aspect_string_eq(AspectId(0), "idle"),
         EventId::new("start"),
-        Update::set_string(AspectId(0), "running")
+        UpdateBlueprint::set_string(AspectId(0), "running")
     );
 
     // 停止设备
-    let stop_transition = Transition::new(
+    let stop_transition = TransitionBlueprint::new(
         TransitionId(1),
         "stop",
-        ActiveInFactory::aspect_string_eq(AspectId(0), "running"),
+        ActiveInBlueprint::aspect_string_eq(AspectId(0), "running"),
         EventId::new("stop"),
-        Update::set_string(AspectId(0), "idle")
+        UpdateBlueprint::set_string(AspectId(0), "idle")
     );
 
     // 连接充电器
-    let charge_transition = Transition::new(
+    let charge_transition = TransitionBlueprint::new(
         TransitionId(2),
         "charge",
-        ActiveInFactory::always(),
+        ActiveInBlueprint::always(),
         EventId::new("charge"),
-        Update::set_bool(AspectId(2), true)
+        UpdateBlueprint::set_bool(AspectId(2), true)
     );
 
     // 断开充电器
-    let uncharge_transition = Transition::new(
+    let uncharge_transition = TransitionBlueprint::new(
         TransitionId(3),
         "uncharge",
-        ActiveInFactory::always(),
+        ActiveInBlueprint::always(),
         EventId::new("uncharge"),
-        Update::set_bool(AspectId(2), false)
+        UpdateBlueprint::set_bool(AspectId(2), false)
     );
 
     // 消耗电量
-    let consume_transition = Transition::new(
+    let consume_transition = TransitionBlueprint::new(
         TransitionId(4),
         "consume",
-        ActiveInFactory::aspect_string_eq(AspectId(0), "running"),
+        ActiveInBlueprint::aspect_string_eq(AspectId(0), "running"),
         EventId::new("tick"),
-        Update::compose(vec![
-            Update::conditional_else(
-                // 如果在充电且电量 < 100，增加电量；否则减少电量
-                |s| s.get_as::<bool>(AspectId(2)).map_or(false, |&v| v)
-                     && s.get_as::<i64>(AspectId(1)).map_or(false, |&v| v < 100),
-                Update::modify_typed::<i64, _>(AspectId(1), |v| v + 1),
-                Update::modify_typed::<i64, _>(AspectId(1), |v| v - 1)
-            ),
-            // 如果电量耗尽，自动停止
-            Update::conditional(
-                |s| s.get_as::<i64>(AspectId(1)).map_or(false, |&v| v <= 0),
-                Update::compose(vec![
-                    Update::set_string(AspectId(0), "idle"),
-                    Update::set_int(AspectId(1), 0),
-                ]),
-            ),
-        ])
+        UpdateBlueprint::noop() // 将在运行时替换为复杂的条件更新
     );
 
     println!("   ✓ 定义了 5 个转移: start, stop, charge, uncharge, consume\n");
@@ -177,7 +143,44 @@ fn main() {
     // ============================================
     println!("5️⃣ 创建运行时实例");
 
-    let mut runtime = StateMachineRuntime::new(blueprint);
+    let mut runtime = StateMachineRuntime::new(blueprint)
+        // 添加区域副作用处理器
+        .with_zone_on_enter(ZoneId(0), || {
+            println!("   ⚠️ 警告：电量低于 20%！");
+        })
+        .with_zone_on_exit(ZoneId(0), || {
+            println!("   ✓ 电量恢复正常");
+        })
+        .with_zone_on_enter(ZoneId(1), || {
+            println!("   🔌 开始充电");
+        })
+        .with_zone_on_exit(ZoneId(1), || {
+            println!("   🔌 停止充电");
+        })
+        .with_zone_on_enter(ZoneId(2), || {
+            println!("   ▶️ 设备启动");
+        })
+        .with_zone_on_exit(ZoneId(2), || {
+            println!("   ⏸️ 设备停止");
+        })
+        // 添加自定义更新操作
+        .with_transition_update(TransitionId(4), Update::compose(vec![
+            Update::conditional_else(
+                // 如果在充电且电量 < 100，增加电量；否则减少电量
+                |s| s.get_as::<bool>(AspectId(2)).map_or(false, |&v| v)
+                     && s.get_as::<i64>(AspectId(1)).map_or(false, |&v| v < 100),
+                Update::modify_typed::<i64, _>(AspectId(1), |v| v + 1),
+                Update::modify_typed::<i64, _>(AspectId(1), |v| v - 1)
+            ),
+            // 如果电量耗尽，自动停止
+            Update::conditional(
+                |s| s.get_as::<i64>(AspectId(1)).map_or(false, |&v| v <= 0),
+                Update::compose(vec![
+                    Update::set_string(AspectId(0), "idle"),
+                    Update::set_int(AspectId(1), 0),
+                ]),
+            ),
+        ]));
 
     println!("   ✓ 初始状态:");
     print_state(&runtime);

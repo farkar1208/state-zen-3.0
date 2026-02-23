@@ -2,8 +2,8 @@
 use crate::core::{AspectId, ClonableAny, EventId};
 use crate::aspect::AspectBlueprint;
 use crate::state::State;
-use crate::zone::Zone;
-use crate::transition::Transition;
+use crate::zone::{Zone, ZoneBlueprint};
+use crate::transition::{Transition, TransitionBlueprint};
 use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
 
@@ -49,8 +49,8 @@ impl AspectDescriptor {
 ///
 /// The StateMachineBlueprint contains all the declarative definition of a state machine:
 /// - State aspects (the dimensions of the state vector)
-/// - Zones (behavior areas with lifecycle handlers)
-/// - Transitions (event-driven state changes)
+/// - Zone blueprints (behavior areas without side effect handlers)
+/// - Transition blueprints (event-driven state changes without side effect handlers)
 ///
 /// This blueprint can be compiled/validated and then instantiated into a runnable state machine.
 #[derive(Debug)]
@@ -61,11 +61,11 @@ pub struct StateMachineBlueprint {
     /// All state aspects defined in this blueprint (type-erased)
     aspects: HashMap<AspectId, AspectDescriptor>,
 
-    /// All zones defined in this blueprint
-    zones: Vec<Zone>,
+    /// All zone blueprints defined in this blueprint
+    zones: Vec<ZoneBlueprint>,
 
-    /// All transitions defined in this blueprint
-    transitions: Vec<Transition>,
+    /// All transition blueprints defined in this blueprint
+    transitions: Vec<TransitionBlueprint>,
 
     /// All event types referenced in this blueprint
     events: HashSet<EventId>,
@@ -90,14 +90,14 @@ impl StateMachineBlueprint {
         self
     }
 
-    /// Add a zone to the blueprint
-    pub fn add_zone(&mut self, zone: Zone) -> &mut Self {
+    /// Add a zone blueprint to the blueprint
+    pub fn add_zone(&mut self, zone: ZoneBlueprint) -> &mut Self {
         self.zones.push(zone);
         self
     }
 
-    /// Add a transition to the blueprint
-    pub fn add_transition(&mut self, transition: Transition) -> &mut Self {
+    /// Add a transition blueprint to the blueprint
+    pub fn add_transition(&mut self, transition: TransitionBlueprint) -> &mut Self {
         self.events.insert(transition.event.clone());
         self.transitions.push(transition);
         self
@@ -113,13 +113,13 @@ impl StateMachineBlueprint {
         self.aspects.get(&id)
     }
 
-    /// Get all zones in this blueprint
-    pub fn zones(&self) -> &[Zone] {
+    /// Get all zone blueprints in this blueprint
+    pub fn zones(&self) -> &[ZoneBlueprint] {
         &self.zones
     }
 
-    /// Get all transitions in this blueprint
-    pub fn transitions(&self) -> &[Transition] {
+    /// Get all transition blueprints in this blueprint
+    pub fn transitions(&self) -> &[TransitionBlueprint] {
         &self.transitions
     }
 
@@ -149,10 +149,16 @@ use crate::zone::ZoneId;
 pub struct StateMachineRuntime {
     /// Reference to the blueprint
     blueprint: StateMachineBlueprint,
-    
+
     /// Current state
     state: State,
-    
+
+    /// Runtime zone instances (compiled from blueprints)
+    zones: Vec<Zone>,
+
+    /// Runtime transition instances (compiled from blueprints)
+    transitions: Vec<Transition>,
+
     /// Zone activation tracking (zone_id -> active)
     zone_activations: HashMap<ZoneId, bool>,
 }
@@ -161,15 +167,32 @@ impl StateMachineRuntime {
     /// Create a new runtime instance from a blueprint
     pub fn new(blueprint: StateMachineBlueprint) -> Self {
         let state = blueprint.create_initial_state();
+
+        // Compile zone blueprints to runtime zones
+        let zones: Vec<Zone> = blueprint
+            .zones()
+            .iter()
+            .map(|zone_blueprint| Zone::from_blueprint(zone_blueprint.clone()))
+            .collect();
+
+        // Compile transition blueprints to runtime transitions
+        let transitions: Vec<Transition> = blueprint
+            .transitions()
+            .iter()
+            .map(|transition_blueprint| Transition::from_blueprint(transition_blueprint.clone()))
+            .collect();
+
         let zone_activations = blueprint
             .zones()
             .iter()
             .map(|zone| (zone.id, false))
             .collect();
-        
+
         Self {
             blueprint,
             state,
+            zones,
+            transitions,
             zone_activations,
         }
     }
@@ -193,8 +216,8 @@ impl StateMachineRuntime {
     pub fn dispatch(&mut self, event: &EventId) -> bool {
         let mut triggered = false;
 
-        // Find and apply matching transitions
-        for transition in self.blueprint.transitions() {
+        // Find and apply matching transitions (use runtime transitions)
+        for transition in &self.transitions {
             if transition.event == *event && transition.is_active(&self.state) {
                 // Execute transition side effect
                 transition.trigger();
@@ -222,10 +245,10 @@ impl StateMachineRuntime {
     
     /// Update zone activations and trigger enter/exit handlers
     fn update_zone_activations(&mut self) {
-        for zone in self.blueprint.zones() {
+        for zone in &self.zones {
             let is_active = zone.is_active(&self.state);
             let was_active = *self.zone_activations.get(&zone.id).unwrap_or(&false);
-            
+
             // Zone just became active
             if is_active && !was_active {
                 zone.enter();
@@ -261,9 +284,58 @@ impl StateMachineRuntime {
             .iter()
             .map(|zone| (zone.id, false))
             .collect();
-        
+
         // Initialize zone activations
         self.update_zone_activations();
+    }
+
+    /// Add an on_enter handler to a zone by ID
+    ///
+    /// This allows attaching side effects to zones after runtime creation.
+    pub fn with_zone_on_enter<F>(mut self, zone_id: ZoneId, handler: F) -> Self
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        if let Some(zone) = self.zones.iter_mut().find(|z| z.id == zone_id) {
+            zone.on_enter = Some(Box::new(handler));
+        }
+        self
+    }
+
+    /// Add an on_exit handler to a zone by ID
+    ///
+    /// This allows attaching side effects to zones after runtime creation.
+    pub fn with_zone_on_exit<F>(mut self, zone_id: ZoneId, handler: F) -> Self
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        if let Some(zone) = self.zones.iter_mut().find(|z| z.id == zone_id) {
+            zone.on_exit = Some(Box::new(handler));
+        }
+        self
+    }
+
+    /// Add an on_tran handler to a transition by ID
+    ///
+    /// This allows attaching side effects to transitions after runtime creation.
+    pub fn with_transition_on_tran<F>(mut self, transition_id: crate::transition::TransitionId, handler: F) -> Self
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        if let Some(transition) = self.transitions.iter_mut().find(|t| t.id == transition_id) {
+            transition.on_tran = Some(Box::new(handler));
+        }
+        self
+    }
+
+    /// Replace the update operation for a transition by ID
+    ///
+    /// This allows customizing the update logic for transitions after runtime creation.
+    pub fn with_transition_update(mut self, transition_id: crate::transition::TransitionId, update: crate::update::Update) -> Self {
+        if let Some(transition) = self.transitions.iter_mut().find(|t| t.id == transition_id) {
+            transition.update = update;
+        }
+        self
     }
 }
 
@@ -271,8 +343,8 @@ impl StateMachineRuntime {
 #[cfg(test)]
 mod blueprint_tests {
     use super::*;
-    use crate::active_in::ActiveInFactory;
-    use crate::update::Update;
+    use crate::active_in::ActiveInBlueprint;
+    use crate::update::UpdateBlueprint;
     use crate::zone::ZoneId;
     use crate::transition::TransitionId;
 
@@ -315,9 +387,9 @@ mod blueprint_tests {
     fn test_blueprint_add_zone() {
         let mut blueprint = StateMachineBlueprint::new("test_machine");
 
-        let zone = Zone::new(ZoneId(0), "test_zone", ActiveInFactory::always());
+        let zone_blueprint = ZoneBlueprint::new(ZoneId(0), "test_zone", ActiveInBlueprint::always());
 
-        blueprint.add_zone(zone);
+        blueprint.add_zone(zone_blueprint);
 
         assert_eq!(blueprint.zones().len(), 1);
     }
@@ -326,15 +398,15 @@ mod blueprint_tests {
     fn test_blueprint_add_transition() {
         let mut blueprint = StateMachineBlueprint::new("test_machine");
 
-        let transition = Transition::new(
+        let transition_blueprint = TransitionBlueprint::new(
             TransitionId(0),
             "test_transition",
-            ActiveInFactory::always(),
+            ActiveInBlueprint::always(),
             EventId::new("start"),
-            Update::noop(),
+            UpdateBlueprint::noop(),
         );
 
-        blueprint.add_transition(transition);
+        blueprint.add_transition(transition_blueprint);
 
         assert_eq!(blueprint.transitions().len(), 1);
         assert!(blueprint.events().contains(&EventId::new("start")));
@@ -391,8 +463,6 @@ mod blueprint_tests {
 mod runtime_tests {
     use super::*;
     use crate::prelude::*;
-    use crate::active_in::ActiveInFactory;
-    use crate::update::Update;
 
     #[test]
     fn test_runtime_creation() {
@@ -410,17 +480,17 @@ mod runtime_tests {
     fn test_runtime_dispatch() {
         let aspect = AspectBlueprint::new(AspectId(0), "mode", "idle".to_string());
 
-        let transition = Transition::new(
+        let transition_blueprint = TransitionBlueprint::new(
             TransitionId(0),
             "start",
-            ActiveInFactory::aspect_string_eq(AspectId(0), "idle"),
+            ActiveInBlueprint::aspect_string_eq(AspectId(0), "idle"),
             EventId::new("start"),
-            Update::set_string(AspectId(0), "running"),
+            UpdateBlueprint::set_string(AspectId(0), "running"),
         );
 
         let mut blueprint = StateMachineBlueprint::new("test");
         blueprint.add_aspect(aspect);
-        blueprint.add_transition(transition);
+        blueprint.add_transition(transition_blueprint);
 
         let mut runtime = StateMachineRuntime::new(blueprint);
 
@@ -433,21 +503,21 @@ mod runtime_tests {
         let mode_aspect = AspectBlueprint::new(AspectId(0), "mode", "idle".to_string());
         let battery_aspect = AspectBlueprint::new(AspectId(1), "battery", 100i64);
 
-        let zone = Zone::new(ZoneId(0), "low_battery", ActiveInFactory::aspect_lt(AspectId(1), 20));
+        let zone_blueprint = ZoneBlueprint::new(ZoneId(0), "low_battery", ActiveInBlueprint::aspect_lt(AspectId(1), 20));
 
-        let transition = Transition::new(
+        let transition_blueprint = TransitionBlueprint::new(
             TransitionId(0),
             "consume",
-            ActiveInFactory::always(),
+            ActiveInBlueprint::always(),
             EventId::new("consume"),
-            Update::set_int(AspectId(1), 10),
+            UpdateBlueprint::set_int(AspectId(1), 10),
         );
 
         let mut blueprint = StateMachineBlueprint::new("test");
         blueprint.add_aspect(mode_aspect);
         blueprint.add_aspect(battery_aspect);
-        blueprint.add_zone(zone);
-        blueprint.add_transition(transition);
+        blueprint.add_zone(zone_blueprint);
+        blueprint.add_transition(transition_blueprint);
 
         let mut runtime = StateMachineRuntime::new(blueprint);
 
@@ -463,20 +533,20 @@ mod runtime_tests {
     fn test_runtime_reset() {
         let aspect = AspectBlueprint::new(AspectId(0), "mode", "idle".to_string());
 
-        let transition = Transition::new(
+        let transition_blueprint = TransitionBlueprint::new(
             TransitionId(0),
             "start",
-            ActiveInFactory::always(),
+            ActiveInBlueprint::always(),
             EventId::new("start"),
-            Update::set_string(AspectId(0), "running"),
+            UpdateBlueprint::set_string(AspectId(0), "running"),
         );
 
-        let zone = Zone::new(ZoneId(0), "running", ActiveInFactory::aspect_string_eq(AspectId(0), "running"));
+        let zone_blueprint = ZoneBlueprint::new(ZoneId(0), "running", ActiveInBlueprint::aspect_string_eq(AspectId(0), "running"));
 
         let mut blueprint = StateMachineBlueprint::new("test");
         blueprint.add_aspect(aspect);
-        blueprint.add_transition(transition);
-        blueprint.add_zone(zone);
+        blueprint.add_transition(transition_blueprint);
+        blueprint.add_zone(zone_blueprint);
 
         let mut runtime = StateMachineRuntime::new(blueprint);
 

@@ -48,6 +48,11 @@
 - **Transition**, **TransitionBlueprint**, **TransitionId**, **EventId** (从 transition 模块)
 - **Update**, **UpdateBlueprint** (从 update 模块)
 - **StateMachineBlueprint**, **AspectDescriptor**, **StateMachineRuntime** (从 statemachine 模块，保持向后兼容)
+  - `StateMachineRuntime` 提供以下 builder 方法用于在运行时添加副作用：
+    - `with_zone_on_enter` - 添加区域进入副作用处理器
+    - `with_zone_on_exit` - 添加区域离开副作用处理器
+    - `with_transition_on_tran` - 添加转移触发副作用处理器
+    - `with_transition_update` - 替换转移的更新操作
 
 ---
 

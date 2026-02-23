@@ -11,17 +11,14 @@
 谓词函数 `(State → bool)`，定义行为在哪些状态下被激活。替代传统状态机的硬编码源状态。
 
 ### Zone（区域）
-状态行为容器，包含：
-- `activeIn`: 定义覆盖的状态集合
-- `on_enter`: 进入区域时的副作用
-- `on_exit`: 离开区域时的副作用
+状态行为容器，分为蓝图层和运行时层：
+- **蓝图层 (`ZoneBlueprint`)**: 定义覆盖的状态集合，不包含副作用处理器
+- **运行时层 (`Zone`)**: 包含生命周期副作用（`on_enter`、`on_exit`）
 
 ### Transition（转移）
-事件驱动的状态变更，包含：
-- `activeIn`: 何时监听事件
-- `event`: 监听的事件类型
-- `update`: 如何计算新状态（纯函数）
-- `on_tran`: 转移发生时的副作用
+事件驱动的状态变更，分为蓝图层和运行时层：
+- **蓝图层 (`TransitionBlueprint`)**: 定义激活条件、事件类型和状态更新，不包含副作用处理器
+- **运行时层 (`Transition`)**: 包含转移发生时的副作用（`on_tran`）
 
 ### Update（状态更新）
 纯函数式的状态变换算子，支持：
@@ -29,75 +26,109 @@
 - 条件更新（conditional）
 - 组合操作（compose）
 
+### StateMachine（状态机）
+分为蓝图层和运行时层：
+- **蓝图层 (`StateMachineBlueprint`)**: 声明式定义状态机结构，可序列化存储或传输
+- **运行时层 (`StateMachineRuntime`)**: 从蓝图创建可执行实例，支持事件分发和状态追踪
+
 ## 快速开始
 
 ```rust
 use state_zen::prelude::*;
-use state_zen::{BlueprintBuilder, Zone, Transition, EventId};
-use state_zen::active_in::ActiveIn;
-use state_zen::update::Update;
+use state_zen::{AspectBlueprint, ZoneBlueprint, TransitionBlueprint, StateMachineRuntime, StateMachineBlueprint};
+use state_zen::active_in::ActiveInBlueprint;
+use state_zen::update::UpdateBlueprint;
 
-// 定义状态面
-let mode = StateAspect::new(AspectId(0), "mode", StateValue::String("idle".to_string()));
-let battery = StateAspect::new(AspectId(1), "battery", StateValue::Integer(100));
+// 定义状态面（蓝图）
+let mode = AspectBlueprint::new(AspectId(0), "mode", "idle".to_string());
+let battery = AspectBlueprint::new(AspectId(1), "battery", 100i64);
 
-// 定义区域
-let low_battery_zone = Zone::new(
+// 定义区域蓝图（声明式，不包含副作用）
+let low_battery_zone = ZoneBlueprint::new(
+    ZoneId(0),
     "low_battery",
-    ActiveIn::aspect_lt(AspectId(1), 20),
-)
-.with_on_enter(|| println!("⚠️  Low battery!"));
+    ActiveInBlueprint::aspect_lt(AspectId(1), 20i64),
+);
 
-// 定义转移
-let start_transition = Transition::new(
+// 定义转移蓝图（声明式，不包含副作用）
+let start_transition = TransitionBlueprint::new(
+    TransitionId(0),
     "start",
-    ActiveIn::aspect_string_eq(AspectId(0), "idle"),
+    ActiveInBlueprint::aspect_string_eq(AspectId(0), "idle"),
     EventId::new("start"),
-    Update::set_string(AspectId(0), "running"),
-)
-.with_on_tran(|| println!("Starting..."));
+    UpdateBlueprint::set_string(AspectId(0), "running"),
+);
 
-// 构建蓝图
-let blueprint = BlueprintBuilder::new()
-    .id("device")
-    .aspect(mode)
-    .aspect(battery)
-    .zone(low_battery_zone)
-    .transition(start_transition)
-    .build()
-    .unwrap();
+// 构建状态机蓝图
+let mut blueprint = StateMachineBlueprint::new("device");
+blueprint.add_aspect(mode);
+blueprint.add_aspect(battery);
+blueprint.add_zone(low_battery_zone);
+blueprint.add_transition(start_transition);
 
-// 创建初始状态
-let mut state = blueprint.create_initial_state();
+// 创建运行时实例并添加副作用处理器
+let mut runtime = StateMachineRuntime::new(blueprint)
+    .with_zone_on_enter(ZoneId(0), || println!("⚠️  Low battery!"))
+    .with_transition_on_tran(TransitionId(0), || println!("Starting..."));
+
+// 分发事件
+runtime.dispatch_str("start");
 ```
 
 ## ActiveIn 算子
 
+### 蓝图层（声明式）
 ```rust
+use state_zen::active_in::ActiveInBlueprint;
+
 // 基本谓词
-ActiveIn::aspect_bool(id, true)           // 布尔值等于
-ActiveIn::aspect_eq(id, 42)                // 整数等于
-ActiveIn::aspect_lt(id, 10)                // 小于
-ActiveIn::aspect_gt(id, 0)                 // 大于
-ActiveIn::aspect_in_range(id, 0, 100)      // 范围
-ActiveIn::aspect_string_eq(id, "active")   // 字符串等于
+ActiveInBlueprint::aspect_bool(id, true)           // 布尔值等于
+ActiveInBlueprint::aspect_eq(id, 42)                // 整数等于
+ActiveInBlueprint::aspect_lt(id, 10)                // 小于
+ActiveInBlueprint::aspect_gt(id, 0)                 // 大于
+ActiveInBlueprint::aspect_in_range(id, 0, 100)      // 范围
+ActiveInBlueprint::aspect_string_eq(id, "active")   // 字符串等于
 
 // 逻辑组合
-let predicate = ActiveIn::aspect_bool(id1, true)
-    .and(ActiveIn::aspect_lt(id2, 10));
+let predicate = ActiveInBlueprint::aspect_bool(id1, true)
+    .and(ActiveInBlueprint::aspect_lt(id2, 10));
+```
+
+### 运行时层（可执行）
+```rust
+use state_zen::active_in::ActiveInFactory;
+
+// 使用工厂方法创建运行时 ActiveIn
+let predicate = ActiveInFactory::aspect_bool(id1, true)
+    .and(ActiveInFactory::aspect_lt(id2, 10));
 ```
 
 ## Update 算子
 
+### 蓝图层（声明式）
 ```rust
+use state_zen::update::UpdateBlueprint;
+
 // 基本操作
-Update::set(id, StateValue::Bool(true))   // 设置值
-Update::set_bool(id, true)                 // 设置布尔
-Update::set_int(id, 42)                    // 设置整数
-Update::increment(id)                      // 自增
-Update::decrement(id)                      // 自减
-Update::add(id, 5)                         // 加法
-Update::toggle(id)                         // 切换布尔
+UpdateBlueprint::set_bool(id, true)   // 设置布尔
+UpdateBlueprint::set_int(id, 42)      // 设置整数
+UpdateBlueprint::increment(id)        // 自增
+UpdateBlueprint::decrement(id)        // 自减
+```
+
+### 运行时层（可执行）
+```rust
+use state_zen::update::Update;
+
+// 基本操作
+Update::set_bool(id, true)   // 设置布尔
+Update::set_int(id, 42)      // 设置整数
+Update::increment(id)        // 自增
+Update::decrement(id)        // 自减
+
+// 条件更新（仅运行时支持）
+Update::conditional(|state| state.get_as::<bool>(id).map_or(false, |&v| v), Update::noop())
+```
 
 // 条件更新
 Update::conditional(
