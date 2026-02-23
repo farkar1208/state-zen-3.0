@@ -2,10 +2,49 @@
 use crate::core::{AspectId, ClonableAny, EventId};
 use crate::aspect::AspectBlueprint;
 use crate::state::State;
-use crate::zone::{Zone, ZoneBlueprint};
-use crate::transition::{Transition, TransitionBlueprint};
+use crate::zone::{Zone, ZoneBlueprint, ZoneId};
+use crate::transition::{Transition, TransitionBlueprint, TransitionId};
 use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
+
+/// Validation errors that can occur when building a state machine blueprint
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValidationError {
+    /// Duplicate aspect ID
+    DuplicateAspectId { id: AspectId },
+    /// Duplicate zone ID
+    DuplicateZoneId { id: ZoneId },
+    /// Duplicate transition ID
+    DuplicateTransitionId { id: TransitionId },
+    /// Zone references non-existent aspect
+    ZoneReferencesUnknownAspect { zone_id: ZoneId, aspect_id: AspectId },
+    /// Transition references non-existent aspect
+    TransitionReferencesUnknownAspect { transition_id: TransitionId, aspect_id: AspectId },
+    /// Empty blueprint ID
+    EmptyBlueprintId,
+    /// No aspects defined
+    NoAspects,
+}
+
+impl std::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValidationError::DuplicateAspectId { id } => write!(f, "Duplicate aspect ID: {:?}", id),
+            ValidationError::DuplicateZoneId { id } => write!(f, "Duplicate zone ID: {:?}", id),
+            ValidationError::DuplicateTransitionId { id } => write!(f, "Duplicate transition ID: {:?}", id),
+            ValidationError::ZoneReferencesUnknownAspect { zone_id, aspect_id } => {
+                write!(f, "Zone {:?} references unknown aspect {:?}", zone_id, aspect_id)
+            }
+            ValidationError::TransitionReferencesUnknownAspect { transition_id, aspect_id } => {
+                write!(f, "Transition {:?} references unknown aspect {:?}", transition_id, aspect_id)
+            }
+            ValidationError::EmptyBlueprintId => write!(f, "Blueprint ID cannot be empty"),
+            ValidationError::NoAspects => write!(f, "Blueprint must have at least one aspect"),
+        }
+    }
+}
+
+impl std::error::Error for ValidationError {}
 
 /// Type-erased aspect descriptor
 #[derive(Debug)]
@@ -61,11 +100,11 @@ pub struct StateMachineBlueprint {
     /// All state aspects defined in this blueprint (type-erased)
     aspects: HashMap<AspectId, AspectDescriptor>,
 
-    /// All zone blueprints defined in this blueprint
-    zones: Vec<ZoneBlueprint>,
+    /// All zone blueprints defined in this blueprint (indexed by ZoneId for O(1) lookup)
+    zones: HashMap<ZoneId, ZoneBlueprint>,
 
-    /// All transition blueprints defined in this blueprint
-    transitions: Vec<TransitionBlueprint>,
+    /// All transition blueprints defined in this blueprint (indexed by TransitionId for O(1) lookup)
+    transitions: HashMap<TransitionId, TransitionBlueprint>,
 
     /// All event types referenced in this blueprint
     events: HashSet<EventId>,
@@ -77,8 +116,8 @@ impl StateMachineBlueprint {
         Self {
             id: id.into(),
             aspects: HashMap::new(),
-            zones: Vec::new(),
-            transitions: Vec::new(),
+            zones: HashMap::new(),
+            transitions: HashMap::new(),
             events: HashSet::new(),
         }
     }
@@ -92,14 +131,14 @@ impl StateMachineBlueprint {
 
     /// Add a zone blueprint to the blueprint
     pub fn add_zone(&mut self, zone: ZoneBlueprint) -> &mut Self {
-        self.zones.push(zone);
+        self.zones.insert(zone.id, zone);
         self
     }
 
     /// Add a transition blueprint to the blueprint
     pub fn add_transition(&mut self, transition: TransitionBlueprint) -> &mut Self {
         self.events.insert(transition.event.clone());
-        self.transitions.push(transition);
+        self.transitions.insert(transition.id, transition);
         self
     }
 
@@ -114,13 +153,13 @@ impl StateMachineBlueprint {
     }
 
     /// Get all zone blueprints in this blueprint
-    pub fn zones(&self) -> &[ZoneBlueprint] {
-        &self.zones
+    pub fn zones(&self) -> impl Iterator<Item = &ZoneBlueprint> {
+        self.zones.values()
     }
 
     /// Get all transition blueprints in this blueprint
-    pub fn transitions(&self) -> &[TransitionBlueprint] {
-        &self.transitions
+    pub fn transitions(&self) -> impl Iterator<Item = &TransitionBlueprint> {
+        self.transitions.values()
     }
 
     /// Get all event types referenced in this blueprint
@@ -137,10 +176,100 @@ impl StateMachineBlueprint {
         }
         builder.build()
     }
+
+    /// Validate the blueprint for consistency and correctness
+    ///
+    /// This method performs comprehensive validation checks:
+    /// - Ensures blueprint ID is not empty
+    /// - Ensures at least one aspect is defined
+    /// - Checks for duplicate IDs (aspect, zone, transition)
+    /// - Verifies all referenced aspects exist
+    ///
+    /// # Returns
+    /// `Ok(())` if validation passes, `Err(ValidationError)` if any issues are found.
+    pub fn validate(&self) -> Result<(), ValidationError> {
+        // Check blueprint ID
+        if self.id.trim().is_empty() {
+            return Err(ValidationError::EmptyBlueprintId);
+        }
+
+        // Check at least one aspect
+        if self.aspects.is_empty() {
+            return Err(ValidationError::NoAspects);
+        }
+
+        // Check for duplicate aspect IDs (already handled by HashMap, but verify)
+        // This is redundant but provides clear error messages if the implementation changes
+
+        // Check zone references
+        for zone in self.zones.values() {
+            // Extract aspect IDs referenced in the zone's ActiveIn predicate
+            let referenced_aspects = zone.active_in.referenced_aspects();
+            for aspect_id in referenced_aspects {
+                if !self.aspects.contains_key(&aspect_id) {
+                    return Err(ValidationError::ZoneReferencesUnknownAspect {
+                        zone_id: zone.id,
+                        aspect_id,
+                    });
+                }
+            }
+        }
+
+        // Check transition references
+        for transition in self.transitions.values() {
+            // Extract aspect IDs referenced in the transition's ActiveIn predicate
+            let referenced_aspects = transition.active_in.referenced_aspects();
+            for aspect_id in referenced_aspects {
+                if !self.aspects.contains_key(&aspect_id) {
+                    return Err(ValidationError::TransitionReferencesUnknownAspect {
+                        transition_id: transition.id,
+                        aspect_id,
+                    });
+                }
+            }
+
+            // Extract aspect IDs referenced in the transition's Update operation
+            let updated_aspects = transition.update.updated_aspects();
+            for aspect_id in updated_aspects {
+                if !self.aspects.contains_key(&aspect_id) {
+                    return Err(ValidationError::TransitionReferencesUnknownAspect {
+                        transition_id: transition.id,
+                        aspect_id,
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get a zone blueprint by ID
+    pub fn get_zone(&self, id: ZoneId) -> Option<&ZoneBlueprint> {
+        self.zones.get(&id)
+    }
+
+    /// Get a transition blueprint by ID
+    pub fn get_transition(&self, id: TransitionId) -> Option<&TransitionBlueprint> {
+        self.transitions.get(&id)
+    }
+
+    /// Check if an aspect exists
+    pub fn has_aspect(&self, id: AspectId) -> bool {
+        self.aspects.contains_key(&id)
+    }
+
+    /// Check if a zone exists
+    pub fn has_zone(&self, id: ZoneId) -> bool {
+        self.zones.contains_key(&id)
+    }
+
+    /// Check if a transition exists
+    pub fn has_transition(&self, id: TransitionId) -> bool {
+        self.transitions.contains_key(&id)
+    }
 }
 
 // Runtime module - State machine execution layer
-use crate::zone::ZoneId;
 
 /// Runtime state machine instance
 ///
@@ -153,11 +282,11 @@ pub struct StateMachineRuntime {
     /// Current state
     state: State,
 
-    /// Runtime zone instances (compiled from blueprints)
-    zones: Vec<Zone>,
+    /// Runtime zone instances (compiled from blueprints, indexed by ZoneId for O(1) lookup)
+    zones: HashMap<ZoneId, Zone>,
 
-    /// Runtime transition instances (compiled from blueprints)
-    transitions: Vec<Transition>,
+    /// Runtime transition instances (compiled from blueprints, indexed by TransitionId for O(1) lookup)
+    transitions: HashMap<TransitionId, Transition>,
 
     /// Zone activation tracking (zone_id -> active)
     zone_activations: HashMap<ZoneId, bool>,
@@ -165,26 +294,32 @@ pub struct StateMachineRuntime {
 
 impl StateMachineRuntime {
     /// Create a new runtime instance from a blueprint
+    ///
+    /// # Panics
+    /// Panics if the blueprint validation fails. Use `validate()` method beforehand
+    /// to check for validation errors in a controlled manner.
     pub fn new(blueprint: StateMachineBlueprint) -> Self {
+        // Validate blueprint before creating runtime
+        if let Err(e) = blueprint.validate() {
+            panic!("Blueprint validation failed: {}", e);
+        }
+
         let state = blueprint.create_initial_state();
 
-        // Compile zone blueprints to runtime zones
-        let zones: Vec<Zone> = blueprint
+        // Compile zone blueprints to runtime zones (indexed by ZoneId)
+        let zones: HashMap<ZoneId, Zone> = blueprint
             .zones()
-            .iter()
-            .map(|zone_blueprint| Zone::from_blueprint(zone_blueprint.clone()))
+            .map(|zone_blueprint| (zone_blueprint.id, Zone::from_blueprint(zone_blueprint.clone())))
             .collect();
 
-        // Compile transition blueprints to runtime transitions
-        let transitions: Vec<Transition> = blueprint
+        // Compile transition blueprints to runtime transitions (indexed by TransitionId)
+        let transitions: HashMap<TransitionId, Transition> = blueprint
             .transitions()
-            .iter()
-            .map(|transition_blueprint| Transition::from_blueprint(transition_blueprint.clone()))
+            .map(|transition_blueprint| (transition_blueprint.id, Transition::from_blueprint(transition_blueprint.clone())))
             .collect();
 
         let zone_activations = blueprint
             .zones()
-            .iter()
             .map(|zone| (zone.id, false))
             .collect();
 
@@ -217,7 +352,7 @@ impl StateMachineRuntime {
         let mut triggered = false;
 
         // Find and apply matching transitions (use runtime transitions)
-        for transition in &self.transitions {
+        for transition in self.transitions.values() {
             if transition.event == *event && transition.is_active(&self.state) {
                 // Execute transition side effect
                 transition.trigger();
@@ -245,7 +380,7 @@ impl StateMachineRuntime {
     
     /// Update zone activations and trigger enter/exit handlers
     fn update_zone_activations(&mut self) {
-        for zone in &self.zones {
+        for zone in self.zones.values() {
             let is_active = zone.is_active(&self.state);
             let was_active = *self.zone_activations.get(&zone.id).unwrap_or(&false);
 
@@ -281,7 +416,6 @@ impl StateMachineRuntime {
         self.state = self.blueprint.create_initial_state();
         self.zone_activations = self.blueprint
             .zones()
-            .iter()
             .map(|zone| (zone.id, false))
             .collect();
 
@@ -296,7 +430,7 @@ impl StateMachineRuntime {
     where
         F: Fn() + Send + Sync + 'static,
     {
-        if let Some(zone) = self.zones.iter_mut().find(|z| z.id == zone_id) {
+        if let Some(zone) = self.zones.get_mut(&zone_id) {
             zone.on_enter = Some(Box::new(handler));
         }
         self
@@ -309,7 +443,7 @@ impl StateMachineRuntime {
     where
         F: Fn() + Send + Sync + 'static,
     {
-        if let Some(zone) = self.zones.iter_mut().find(|z| z.id == zone_id) {
+        if let Some(zone) = self.zones.get_mut(&zone_id) {
             zone.on_exit = Some(Box::new(handler));
         }
         self
@@ -322,7 +456,7 @@ impl StateMachineRuntime {
     where
         F: Fn() + Send + Sync + 'static,
     {
-        if let Some(transition) = self.transitions.iter_mut().find(|t| t.id == transition_id) {
+        if let Some(transition) = self.transitions.get_mut(&transition_id) {
             transition.on_tran = Some(Box::new(handler));
         }
         self
@@ -332,7 +466,7 @@ impl StateMachineRuntime {
     ///
     /// This allows customizing the update logic for transitions after runtime creation.
     pub fn with_transition_update(mut self, transition_id: crate::transition::TransitionId, update: crate::update::Update) -> Self {
-        if let Some(transition) = self.transitions.iter_mut().find(|t| t.id == transition_id) {
+        if let Some(transition) = self.transitions.get_mut(&transition_id) {
             transition.update = update;
         }
         self
@@ -354,8 +488,8 @@ mod blueprint_tests {
 
         assert_eq!(blueprint.id, "test_machine");
         assert_eq!(blueprint.aspects().count(), 0);
-        assert_eq!(blueprint.zones().len(), 0);
-        assert_eq!(blueprint.transitions().len(), 0);
+        assert_eq!(blueprint.zones().count(), 0);
+        assert_eq!(blueprint.transitions().count(), 0);
     }
 
     #[test]
@@ -391,7 +525,7 @@ mod blueprint_tests {
 
         blueprint.add_zone(zone_blueprint);
 
-        assert_eq!(blueprint.zones().len(), 1);
+        assert_eq!(blueprint.zones().count(), 1);
     }
 
     #[test]
@@ -408,7 +542,7 @@ mod blueprint_tests {
 
         blueprint.add_transition(transition_blueprint);
 
-        assert_eq!(blueprint.transitions().len(), 1);
+        assert_eq!(blueprint.transitions().count(), 1);
         assert!(blueprint.events().contains(&EventId::new("start")));
     }
 
@@ -455,6 +589,163 @@ mod blueprint_tests {
         assert_eq!(descriptor.type_id, TypeId::of::<i32>());
         assert!(descriptor.has_min);
         assert!(descriptor.has_max);
+    }
+
+    #[test]
+    fn test_validate_empty_blueprint_id() {
+        let blueprint = StateMachineBlueprint::new("");
+
+        let result = blueprint.validate();
+        assert_eq!(result, Err(ValidationError::EmptyBlueprintId));
+    }
+
+    #[test]
+    fn test_validate_no_aspects() {
+        let blueprint = StateMachineBlueprint::new("test");
+
+        let result = blueprint.validate();
+        assert_eq!(result, Err(ValidationError::NoAspects));
+    }
+
+    #[test]
+    fn test_validate_zone_references_unknown_aspect() {
+        let mut blueprint = StateMachineBlueprint::new("test");
+        blueprint.add_aspect(AspectBlueprint::new(AspectId(0), "mode", "idle".to_string()));
+
+        // Zone references AspectId(99) which doesn't exist
+        let zone = ZoneBlueprint::new(
+            ZoneId(0),
+            "test_zone",
+            ActiveInBlueprint::aspect_bool(AspectId(99), true),
+        );
+        blueprint.add_zone(zone);
+
+        let result = blueprint.validate();
+        assert!(matches!(
+            result,
+            Err(ValidationError::ZoneReferencesUnknownAspect { .. })
+        ));
+    }
+
+    #[test]
+    fn test_validate_transition_references_unknown_aspect() {
+        let mut blueprint = StateMachineBlueprint::new("test");
+        blueprint.add_aspect(AspectBlueprint::new(AspectId(0), "mode", "idle".to_string()));
+
+        // Transition references AspectId(99) which doesn't exist
+        let transition = TransitionBlueprint::new(
+            TransitionId(0),
+            "test_transition",
+            ActiveInBlueprint::aspect_bool(AspectId(99), true),
+            EventId::new("start"),
+            UpdateBlueprint::noop(),
+        );
+        blueprint.add_transition(transition);
+
+        let result = blueprint.validate();
+        assert!(matches!(
+            result,
+            Err(ValidationError::TransitionReferencesUnknownAspect { .. })
+        ));
+    }
+
+    #[test]
+    fn test_validate_valid_blueprint() {
+        let mut blueprint = StateMachineBlueprint::new("test");
+        blueprint.add_aspect(AspectBlueprint::new(AspectId(0), "mode", "idle".to_string()));
+        blueprint.add_aspect(AspectBlueprint::new(AspectId(1), "battery", 100i64));
+
+        let zone = ZoneBlueprint::new(
+            ZoneId(0),
+            "low_battery",
+            ActiveInBlueprint::aspect_lt(AspectId(1), 20),
+        );
+        blueprint.add_zone(zone);
+
+        let transition = TransitionBlueprint::new(
+            TransitionId(0),
+            "start",
+            ActiveInBlueprint::aspect_string_eq(AspectId(0), "idle"),
+            EventId::new("start"),
+            UpdateBlueprint::set_string(AspectId(0), "running"),
+        );
+        blueprint.add_transition(transition);
+
+        let result = blueprint.validate();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_has_aspect() {
+        let mut blueprint = StateMachineBlueprint::new("test");
+        blueprint.add_aspect(AspectBlueprint::new(AspectId(0), "mode", "idle".to_string()));
+
+        assert!(blueprint.has_aspect(AspectId(0)));
+        assert!(!blueprint.has_aspect(AspectId(99)));
+    }
+
+    #[test]
+    fn test_has_zone() {
+        let mut blueprint = StateMachineBlueprint::new("test");
+        blueprint.add_aspect(AspectBlueprint::new(AspectId(0), "mode", "idle".to_string()));
+        blueprint.add_zone(ZoneBlueprint::new(
+            ZoneId(0),
+            "test_zone",
+            ActiveInBlueprint::always(),
+        ));
+
+        assert!(blueprint.has_zone(ZoneId(0)));
+        assert!(!blueprint.has_zone(ZoneId(99)));
+    }
+
+    #[test]
+    fn test_has_transition() {
+        let mut blueprint = StateMachineBlueprint::new("test");
+        blueprint.add_aspect(AspectBlueprint::new(AspectId(0), "mode", "idle".to_string()));
+        blueprint.add_transition(TransitionBlueprint::new(
+            TransitionId(0),
+            "test_transition",
+            ActiveInBlueprint::always(),
+            EventId::new("start"),
+            UpdateBlueprint::noop(),
+        ));
+
+        assert!(blueprint.has_transition(TransitionId(0)));
+        assert!(!blueprint.has_transition(TransitionId(99)));
+    }
+
+    #[test]
+    fn test_get_zone() {
+        let mut blueprint = StateMachineBlueprint::new("test");
+        blueprint.add_aspect(AspectBlueprint::new(AspectId(0), "mode", "idle".to_string()));
+        let zone = ZoneBlueprint::new(ZoneId(0), "test_zone", ActiveInBlueprint::always());
+        blueprint.add_zone(zone.clone());
+
+        let retrieved = blueprint.get_zone(ZoneId(0));
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().id, ZoneId(0));
+
+        assert!(blueprint.get_zone(ZoneId(99)).is_none());
+    }
+
+    #[test]
+    fn test_get_transition() {
+        let mut blueprint = StateMachineBlueprint::new("test");
+        blueprint.add_aspect(AspectBlueprint::new(AspectId(0), "mode", "idle".to_string()));
+        let transition = TransitionBlueprint::new(
+            TransitionId(0),
+            "test_transition",
+            ActiveInBlueprint::always(),
+            EventId::new("start"),
+            UpdateBlueprint::noop(),
+        );
+        blueprint.add_transition(transition.clone());
+
+        let retrieved = blueprint.get_transition(TransitionId(0));
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().id, TransitionId(0));
+
+        assert!(blueprint.get_transition(TransitionId(99)).is_none());
     }
 }
 
@@ -557,5 +848,22 @@ mod runtime_tests {
         runtime.reset();
         assert_eq!(runtime.state().get_as::<String>(AspectId(0)), Some(&"idle".to_string()));
         assert!(!runtime.is_zone_active(ZoneId(0)));
+    }
+
+    #[test]
+    #[should_panic(expected = "Blueprint validation failed")]
+    fn test_runtime_creation_with_invalid_blueprint_panics() {
+        let blueprint = StateMachineBlueprint::new("test"); // No aspects added
+        StateMachineRuntime::new(blueprint); // Should panic
+    }
+
+    #[test]
+    fn test_runtime_creation_with_valid_blueprint() {
+        let mut blueprint = StateMachineBlueprint::new("test");
+        blueprint.add_aspect(AspectBlueprint::new(AspectId(0), "mode", "idle".to_string()));
+
+        // This should not panic
+        let runtime = StateMachineRuntime::new(blueprint);
+        assert_eq!(runtime.state().get_as::<String>(AspectId(0)), Some(&"idle".to_string()));
     }
 }

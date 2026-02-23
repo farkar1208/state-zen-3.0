@@ -135,6 +135,29 @@ impl ActiveInBlueprint {
     pub fn any(predicates: Vec<ActiveInBlueprint>) -> Self {
         ActiveInBlueprint::Or(predicates)
     }
+
+    /// Get all aspect IDs referenced by this predicate
+    ///
+    /// This method recursively collects all aspect IDs referenced in the predicate
+    /// for validation purposes.
+    pub fn referenced_aspects(&self) -> Vec<AspectId> {
+        match self {
+            ActiveInBlueprint::Always | ActiveInBlueprint::Never => vec![],
+            ActiveInBlueprint::AspectBool { aspect_id, .. } => vec![*aspect_id],
+            ActiveInBlueprint::AspectEq { aspect_id, .. } => vec![*aspect_id],
+            ActiveInBlueprint::AspectLt { aspect_id, .. } => vec![*aspect_id],
+            ActiveInBlueprint::AspectGt { aspect_id, .. } => vec![*aspect_id],
+            ActiveInBlueprint::AspectInRange { aspect_id, .. } => vec![*aspect_id],
+            ActiveInBlueprint::AspectStringEq { aspect_id, .. } => vec![*aspect_id],
+            ActiveInBlueprint::And(predicates) => {
+                predicates.iter().flat_map(|p| p.referenced_aspects()).collect()
+            }
+            ActiveInBlueprint::Or(predicates) => {
+                predicates.iter().flat_map(|p| p.referenced_aspects()).collect()
+            }
+            ActiveInBlueprint::Not(predicate) => predicate.referenced_aspects(),
+        }
+    }
 }
 
 impl Not for ActiveInBlueprint {

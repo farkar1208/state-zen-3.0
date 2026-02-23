@@ -174,6 +174,32 @@ impl UpdateBlueprint {
             else_update: Some(Box::new(else_update)),
         }
     }
+
+    /// Get all aspect IDs that are updated by this operation
+    ///
+    /// This method recursively collects all aspect IDs that will be modified
+    /// by this update operation for validation purposes.
+    pub fn updated_aspects(&self) -> Vec<AspectId> {
+        match self {
+            UpdateBlueprint::Noop => vec![],
+            UpdateBlueprint::Set { aspect_id, .. } => vec![*aspect_id],
+            UpdateBlueprint::Modify { aspect_id, .. } => vec![*aspect_id],
+            UpdateBlueprint::Compose(updates) => {
+                updates.iter().flat_map(|u| u.updated_aspects()).collect()
+            }
+            UpdateBlueprint::Conditional {
+                then_update,
+                else_update,
+                ..
+            } => {
+                let mut aspects = then_update.updated_aspects();
+                if let Some(else_update) = else_update {
+                    aspects.extend(else_update.updated_aspects());
+                }
+                aspects
+            }
+        }
+    }
 }
 
 // ============================================================================
