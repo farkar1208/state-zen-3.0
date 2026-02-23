@@ -1,10 +1,9 @@
 // Blueprint module - State machine definition layer
-use crate::core::{AspectId, ClonableAny, EventId};
+use crate::core::{AspectId, EventId};
 use crate::aspect::AspectBlueprint;
 use crate::state::State;
 use crate::zone::{Zone, ZoneBlueprint, ZoneId};
 use crate::transition::{Transition, TransitionBlueprint, TransitionId};
-use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
 
 /// Validation errors that can occur when building a state machine blueprint
@@ -46,44 +45,6 @@ impl std::fmt::Display for ValidationError {
 
 impl std::error::Error for ValidationError {}
 
-/// Type-erased aspect descriptor
-#[derive(Debug)]
-pub struct AspectDescriptor {
-    pub id: AspectId,
-    pub name: String,
-    pub type_id: TypeId,
-    pub default_value: Box<dyn ClonableAny>,
-    pub has_min: bool,
-    pub has_max: bool,
-}
-
-impl Clone for AspectDescriptor {
-    fn clone(&self) -> Self {
-        // Use ClonableAny::clone_box() to support all types implementing ClonableAny
-        Self {
-            id: self.id,
-            name: self.name.clone(),
-            type_id: self.type_id,
-            default_value: self.default_value.clone_box(),
-            has_min: self.has_min,
-            has_max: self.has_max,
-        }
-    }
-}
-
-impl AspectDescriptor {
-    pub fn from_blueprint(blueprint: &AspectBlueprint) -> Self {
-        Self {
-            id: blueprint.id,
-            name: blueprint.name.clone(),
-            type_id: blueprint.default_type_id,
-            default_value: blueprint.default_value.clone_box(),
-            has_min: blueprint.bounds.as_ref().map(|b| b.min_value.is_some()).unwrap_or(false),
-            has_max: blueprint.bounds.as_ref().map(|b| b.max_value.is_some()).unwrap_or(false),
-        }
-    }
-}
-
 /// A blueprint for defining a state machine without runtime execution
 ///
 /// The StateMachineBlueprint contains all the declarative definition of a state machine:
@@ -97,8 +58,8 @@ pub struct StateMachineBlueprint {
     /// Unique identifier for this blueprint
     pub id: String,
 
-    /// All state aspects defined in this blueprint (type-erased)
-    aspects: HashMap<AspectId, AspectDescriptor>,
+    /// All state aspects defined in this blueprint
+    aspects: HashMap<AspectId, AspectBlueprint>,
 
     /// All zone blueprints defined in this blueprint (indexed by ZoneId for O(1) lookup)
     zones: HashMap<ZoneId, ZoneBlueprint>,
@@ -124,8 +85,7 @@ impl StateMachineBlueprint {
 
     /// Add a state aspect to the blueprint using AspectBlueprint
     pub fn add_aspect(&mut self, blueprint: AspectBlueprint) -> &mut Self {
-        let descriptor = AspectDescriptor::from_blueprint(&blueprint);
-        self.aspects.insert(blueprint.id, descriptor);
+        self.aspects.insert(blueprint.id, blueprint);
         self
     }
 
@@ -142,13 +102,13 @@ impl StateMachineBlueprint {
         self
     }
 
-    /// Get all aspect descriptors in this blueprint
-    pub fn aspects(&self) -> impl Iterator<Item = &AspectDescriptor> {
+    /// Get all aspect blueprints in this blueprint
+    pub fn aspects(&self) -> impl Iterator<Item = &AspectBlueprint> {
         self.aspects.values()
     }
 
-    /// Get an aspect descriptor by ID
-    pub fn get_aspect(&self, id: AspectId) -> Option<&AspectDescriptor> {
+    /// Get an aspect blueprint by ID
+    pub fn get_aspect(&self, id: AspectId) -> Option<&AspectBlueprint> {
         self.aspects.get(&id)
     }
 
@@ -170,9 +130,9 @@ impl StateMachineBlueprint {
     /// Create an initial state from the blueprint's aspect defaults
     pub fn create_initial_state(&self) -> State {
         let mut builder = crate::state::StateBuilder::new();
-        for descriptor in self.aspects.values() {
+        for blueprint in self.aspects.values() {
             // Use ClonableAny::clone_box() to support all types implementing ClonableAny
-            builder = builder.set(descriptor.id, descriptor.default_value.clone_box());
+            builder = builder.set(blueprint.id, blueprint.default_value.clone_box());
         }
         builder.build()
     }
@@ -512,9 +472,11 @@ mod blueprint_tests {
 
         blueprint.add_aspect(aspect_blueprint);
 
-        let descriptor = blueprint.get_aspect(AspectId(0)).unwrap();
-        assert!(descriptor.has_min);
-        assert!(descriptor.has_max);
+        let blueprint_aspect = blueprint.get_aspect(AspectId(0)).unwrap();
+        assert!(blueprint_aspect.bounds.is_some());
+        let bounds = blueprint_aspect.bounds.as_ref().unwrap();
+        assert!(bounds.min_value.is_some());
+        assert!(bounds.max_value.is_some());
     }
 
     #[test]
@@ -575,20 +537,6 @@ mod blueprint_tests {
         blueprint.add_aspect(aspect3);
 
         assert_eq!(blueprint.aspects().count(), 3);
-    }
-
-    #[test]
-    fn test_aspect_descriptor_from_blueprint() {
-        let blueprint = AspectBlueprint::new(AspectId(0), "counter", 42i32)
-            .with_range(0, 100);
-
-        let descriptor = AspectDescriptor::from_blueprint(&blueprint);
-
-        assert_eq!(descriptor.id, AspectId(0));
-        assert_eq!(descriptor.name, "counter");
-        assert_eq!(descriptor.type_id, TypeId::of::<i32>());
-        assert!(descriptor.has_min);
-        assert!(descriptor.has_max);
     }
 
     #[test]

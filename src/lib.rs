@@ -16,7 +16,7 @@ pub use zone::{Zone, ZoneBlueprint, ZoneId};
 pub use transition::{Transition, TransitionBlueprint, TransitionId};
 pub use update::{Update, UpdateBlueprint};
 // Re-export from statemachine module for backward compatibility
-pub use statemachine::{StateMachineBlueprint, AspectDescriptor, StateMachineRuntime, ValidationError};
+pub use statemachine::{StateMachineBlueprint, StateMachineRuntime, ValidationError};
 
 /// Prelude module for convenient imports
 pub mod prelude {
@@ -27,5 +27,5 @@ pub mod prelude {
     pub use crate::zone::{Zone, ZoneBlueprint, ZoneId};
     pub use crate::transition::{Transition, TransitionBlueprint, TransitionId};
     pub use crate::update::{Update, UpdateBlueprint};
-    pub use crate::statemachine::{StateMachineBlueprint, AspectDescriptor, StateMachineRuntime, ValidationError};
+    pub use crate::statemachine::{StateMachineBlueprint, StateMachineRuntime, ValidationError};
 }

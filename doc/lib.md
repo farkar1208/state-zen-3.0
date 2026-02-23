@@ -47,7 +47,7 @@
 - **Zone**, **ZoneBlueprint**, **ZoneId** (从 zone 模块)
 - **Transition**, **TransitionBlueprint**, **TransitionId**, **EventId** (从 transition 模块)
 - **Update**, **UpdateBlueprint** (从 update 模块)
-- **StateMachineBlueprint**, **AspectDescriptor**, **StateMachineRuntime** (从 statemachine 模块，保持向后兼容)
+- **StateMachineBlueprint**, **StateMachineRuntime**, **ValidationError** (从 statemachine 模块)
   - `StateMachineRuntime` 提供以下 builder 方法用于在运行时添加副作用：
     - `with_zone_on_enter` - 添加区域进入副作用处理器
     - `with_zone_on_exit` - 添加区域离开副作用处理器
@@ -58,9 +58,11 @@
 
 ## Review 意见
 
-1. **向后兼容性**：`StateMachineBlueprint`、`AspectDescriptor` 和 `StateMachineRuntime` 从 `statemachine` 模块重新导出，而不是从 `blueprint` 和 `runtime` 模块。这是为了保持向后兼容性，建议在 README 中说明这一变更。
+1. **向后兼容性**：`StateMachineBlueprint` 和 `StateMachineRuntime` 从 `statemachine` 模块重新导出。建议在 README 中说明这一设计。
 
-2. **模块重构**：`blueprint` 和 `runtime` 模块已合并为 `statemachine` 模块。虽然为了向后兼容性保留了重新导出，但建议用户直接从 `statemachine` 模块导入，以避免依赖已弃用的模块名。
+2. **模块重构**：`blueprint` 和 `runtime` 模块已合并为 `statemachine` 模块。建议用户直接从 `statemachine` 模块导入。
+
+3. **验证支持**：`ValidationError` 已添加到公共 API，用户可以在创建运行时实例前验证蓝图。
 
 3. **文档注释**：建议为模块添加更详细的 Rust doc 注释（`///`），说明每个模块的用途和主要类型。
 
